@@ -6,9 +6,20 @@ The blog example on Rails and on its Rust port, same database, same rows. Run it
 bundle exec rake example:benchmark
 ```
 
+## 2026-09-25, generated code, moderate load (median of 3 runs)
+
+A second run of the `rutile build` output, meant for a quiet machine. It ran on this one instead, with the load average between 5 and 11 across the three runs. Both servers were close to their quiet-run numbers: 28.6 times Rails on the index, 20.2 times on `show`. Rails swung more between runs (the third run's `show` fell to 779 req/s); Rust's `show` stayed at 23,000 in all three.
+
+| Endpoint | Server | req/s | p50 | p99 | RSS |
+|---|---|---:|---:|---:|---:|
+| `GET /posts` | Rails | 308 | 29.12 ms | 64.22 ms | 102 MiB |
+| `GET /posts` | Rust | 8,824 | 1.10 ms | 1.77 ms | 8 MiB |
+| `GET /posts/:id` | Rails | 1,150 | 8.53 ms | 11.51 ms | 103 MiB |
+| `GET /posts/:id` | Rust | 23,266 | 0.41 ms | 0.90 ms | 9 MiB |
+
 ## 2026-09-25, generated code, machine under load
 
-The Rust side here is `rutile build` output. Other work on the machine (several Godot processes at full load) had the load average at 19.7 when the run started and 34.4 when it ended, so both servers are slower than in the quiet run below. They ran back to back under the same contention, so the ratios are the useful part: 27 times Rails on the index, 16.5 times on `show`. A rerun on a quiet machine is still to do.
+The Rust side here is `rutile build` output. Other work on the machine (several Godot processes at full load) had the load average at 19.7 when the run started and 34.4 when it ended, so both servers are slower than in the quiet run below. They ran back to back under the same contention, so the ratios are the useful part: 27 times Rails on the index, 16.5 times on `show`.
 
 | Endpoint | Server | req/s | p50 | p99 | RSS |
 |---|---|---:|---:|---:|---:|
