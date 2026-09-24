@@ -1,0 +1,3 @@
+[tools]
+# PostgreSQL for the example app's throwaway cluster (rake pg:start).
+"conda:postgresql" = "16.15"

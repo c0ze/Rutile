@@ -1,0 +1,20 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: <%= ENV.fetch("BLOG_DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("BLOG_DB_PORT", 54329) %>
+  username: <%= ENV.fetch("BLOG_DB_USER", "postgres") %>
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: blog_development
+
+test:
+  <<: *default
+  database: blog_test
+
+production:
+  <<: *default
+  database: blog_production
+  password: <%= ENV["BLOG_DATABASE_PASSWORD"] %>
