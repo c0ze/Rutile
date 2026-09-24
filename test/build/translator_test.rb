@@ -27,8 +27,8 @@ class TranslatorTest < Minitest::Test
 
   def test_a_method_on_a_possibly_nil_association_is_error_nil
     assert_rust_includes callback("post.increment!(:comments_count)", model: "Comment"), <<~RUST
-      let post = Comment::POST.get(ctx, comment)?;
-      ctx.increment_bang(post.ok_or(Error::Nil { what: "increment!" })?, "comments_count", 1)?;
+      let post = Comment::POST.get(ctx, comment)?.ok_or(Error::Nil { what: "increment!" })?;
+      ctx.increment_bang(post, "comments_count", 1)?;
     RUST
   end
 

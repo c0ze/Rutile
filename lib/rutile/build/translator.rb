@@ -7,6 +7,7 @@ module Rutile
     class Translator
       include ModelCalls
       include Borrowing
+      include WebCalls
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -210,8 +211,9 @@ module Rutile
         return self_call(node, node.name.to_s, args) if node.receiver.nil?
 
         receiver = expr(node.receiver)
-        # Ruby evaluates the receiver before the arguments.
-        receiver = bind(receiver) if args.any? && impure?(receiver)
+        # Ruby evaluates the receiver before the arguments, which matters
+        # only when an argument can do something.
+        receiver = bind(receiver) if impure?(receiver) && !args.all? { literal?(_1) }
         return safe_call(receiver, node, args) if node.safe_navigation?
 
         send_to(receiver, node, node.name.to_s, args)

@@ -69,6 +69,17 @@ module Rutile
       def model(*names) = @models.merge(names)
       def line(text) = (@lines << text unless @lines.include?(text))
 
+      # Whatever spelling `type` in a signature needs.
+      def type(type)
+        case type.kind
+        when :record, :relation
+          rt(type.kind == :record ? "Handle" : "Relation")
+          model(type.model)
+        when :nilable then self.type(type.inner)
+        when :attributes, :value, :json, :time then rt(type.rust)
+        end
+      end
+
       # `models_from` is `super` inside src/models and `crate::models` elsewhere.
       def lines(models_from)
         groups = [@std.sort.map { "use #{_1};" }]

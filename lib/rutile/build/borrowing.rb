@@ -49,6 +49,19 @@ module Rutile
       # Fallible (`?`) or writing: running it later, or twice, would differ.
       def impure?(code) = code.writes? || code.rust.include?("?")
 
+      # Literals can't observe or change anything.
+      def literal?(node)
+        case node
+        when Prism::SymbolNode, Prism::StringNode, Prism::IntegerNode, Prism::FloatNode, Prism::TrueNode, Prism::FalseNode,
+             Prism::NilNode
+          true
+        when Prism::ArrayNode then node.elements.all? { literal?(_1) }
+        when Prism::HashNode, Prism::KeywordHashNode
+          node.elements.all? { _1.is_a?(Prism::AssocNode) && literal?(_1.key) && literal?(_1.value) }
+        else false
+        end
+      end
+
       # A plain name already, or bound to one.
       def local!(code) = code.rust.match?(/\A[a-z_][a-z0-9_]*\z/) ? code : bind(code)
 
