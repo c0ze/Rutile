@@ -12,4 +12,14 @@ class ExampleTasksTest < Minitest::Test
     _out, err, status = Open3.capture3(env, "bundle", "exec", "rake", "example:db", chdir: ROOT)
     assert status.success?, err
   end
+
+  # Rutile's own tests introspect the blog, whatever EXAMPLE says.
+  def test_rutile_tests_prepare_the_blog_whatever_example_is_set_to
+    out, err, status = Open3.capture3({ "EXAMPLE" => "tracker" }, "bundle", "exec", "rake", "-P", chdir: ROOT)
+    assert status.success?, err
+    prerequisites = out[/^rake test\n((?:    .*\n)*)/, 1].to_s.split.sort
+    assert_equal %w[example:blog_db], prerequisites
+    default = out[/^rake default\n((?:    .*\n)*)/, 1].to_s.split
+    assert_equal %w[test blog:test tracker:test], default
+  end
 end

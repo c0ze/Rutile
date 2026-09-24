@@ -15,6 +15,10 @@ def blog_only! = (abort "only the blog has a Rust crate (EXAMPLE=#{EXAMPLE})" un
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
 
+def prepare_database(app)
+  Dir.chdir(app) { Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "db:prepare") } }
+end
+
 def pg_running?
   system("pg_ctl", "-D", PG_DIR, "status", out: File::NULL, err: File::NULL)
 end
@@ -39,11 +43,10 @@ end
 
 namespace :example do
   desc "Create and migrate the example app's test database"
-  task db: "pg:start" do
-    Dir.chdir(EXAMPLE_APP) do
-      Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "db:prepare") }
-    end
-  end
+  task(db: "pg:start") { prepare_database(EXAMPLE_APP) }
+
+  # Rutile's own tests introspect the blog, whatever EXAMPLE says.
+  task(blog_db: "pg:start") { prepare_database(File.expand_path("../examples/blog", __dir__)) }
 
   desc "Check the example app for anything rutile build can't compile"
   task check: :db do

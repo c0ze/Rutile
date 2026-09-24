@@ -6,11 +6,14 @@ Rake::TestTask.new(:test) do |t|
 end
 
 # The introspection tests boot examples/blog, which needs its database.
-task test: "example:db"
+task test: "example:blog_db"
 
-namespace :tracker do
-  desc "Run the tracker example's own test suite"
-  task(:test) { sh({ "EXAMPLE" => "tracker" }, "bundle", "exec", "rake", "example:test") }
+# Each example's own suite, whatever EXAMPLE the shell has set.
+%w[blog tracker].each do |name|
+  namespace(name) do
+    desc "Run the #{name} example's own test suite"
+    task(:test) { sh({ "EXAMPLE" => name }, "bundle", "exec", "rake", "example:test") }
+  end
 end
 
-task default: %i[test example:test tracker:test]
+task default: %w[test blog:test tracker:test]
