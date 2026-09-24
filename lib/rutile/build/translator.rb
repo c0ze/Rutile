@@ -5,6 +5,11 @@ module Rutile
     # touches the `Ctx` is bound to a local before a call that borrows it
     # mutably, in Ruby's left-to-right order, and nothing is evaluated twice.
     class Translator
+      # Rust's keywords, which a Ruby local may happen to be named.
+      KEYWORDS = %w[as async await abstract become box break const continue crate do dyn else enum extern false final fn
+                    for gen if impl in let loop macro match mod move mut override priv pub ref return static struct super
+                    trait true try type typeof unsafe unsized use virtual where while yield].freeze
+
       include ModelCalls
       include Borrowing
       include WebCalls
@@ -23,7 +28,8 @@ module Rutile
         @result = result
         @locals = {}
         @writes = Hash.new(0)
-        @taken = Set.new(["ctx", "req", "self", self_var].compact)
+        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS].compact)
+        @renames = {}
         @lines = []
       end
 
@@ -62,8 +68,11 @@ module Rutile
       def reserve(node)
         case node
         when Prism::LocalVariableWriteNode
-          @writes[node.name.to_s] += 1
-          @taken << node.name.to_s
+          name = node.name.to_s
+          @writes[name] += 1
+          # One that would shadow the record, the Ctx or a keyword gets another name.
+          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS].include?(name)
+          reserved ? (@renames[name] ||= fresh(name)) : @taken << name
         when Prism::RequiredParameterNode, Prism::LocalVariableTargetNode
           @taken << node.name.to_s
         end
@@ -124,14 +133,15 @@ module Rutile
 
       def assign_local(node)
         name = node.name.to_s
+        rust = @renames.fetch(name, name)
         code = expr(node.value)
         if (known = @locals[name])
           raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
 
-          @lines << "#{name} = #{owned(code)};"
+          @lines << "#{rust} = #{owned(code)};"
         else
-          @lines << "let #{"mut " if @writes[name] > 1}#{name} = #{owned(code)};"
-          @locals[name] = Code[name, code.type, local: true, literal: code.extra[:literal]]
+          @lines << "let #{"mut " if @writes[name] > 1}#{rust} = #{owned(code)};"
+          @locals[name] = Code[rust, code.type, local: true, literal: code.extra[:literal]]
         end
       end
 
@@ -211,6 +221,7 @@ module Rutile
         return self_call(node, node.name.to_s, args) if node.receiver.nil?
 
         receiver = expr(node.receiver)
+        unsupported!(node, "a call chained after &.") if receiver.extra[:nav]
         # Ruby evaluates the receiver before the arguments, which matters
         # only when an argument can do something.
         receiver = bind(receiver) if impure?(receiver) && !args.all? { literal?(_1) }
@@ -246,8 +257,11 @@ module Rutile
         unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
         unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
         @lines = saved
-        Code["#{receiver.rust}.map(|#{var}| #{inner.rust})", T.nilable(inner.type), :read,
-             safe: [receiver.rust, var, inner.rust]]
+        # Onto something that may itself be nil, it stays one Option deep.
+        flat = inner.type.nilable?
+        rust = "#{receiver.rust}.#{flat ? "and_then" : "map"}(|#{var}| #{inner.rust})"
+        safe = inner.type == T::BOOL ? { safe: [receiver.rust, var, inner.rust] } : {}
+        Code[rust, flat ? inner.type : T.nilable(inner.type), :read, nav: true, **safe]
       end
     end
   end

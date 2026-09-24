@@ -1,3 +1,4 @@
+require "fileutils"
 require_relative "../build_helper"
 
 class ControllerFileTest < Minitest::Test
@@ -99,5 +100,25 @@ class ControllerFileTest < Minitest::Test
   def test_render_must_end_the_action
     error = assert_raises(Rutile::Build::Unsupported) { action("render json: { a: 1 }\nhead :ok") }
     assert_equal "snippet.rb:1: render or head before the end of an action isn't supported yet", error.message
+  end
+
+  # Ruby reads `draft?` before `save` runs; so must the Rust.
+  def test_a_hash_keeps_ruby_order_around_writes
+    assert_rust_includes action("post = Post.find(params[:id])\nrender json: { was_draft: post.draft?, saved: post.save }"), <<~RUST
+      let post = Post::find(&mut req.ctx, req.params.value("id"))?;
+      let was_draft = req.ctx[post].is_draft();
+      Ok(Response::json(status::OK, json!({ "was_draft": was_draft, "saved": req.ctx.save(post)? })))
+    RUST
+  end
+
+  def test_class_level_calls_the_manifest_lacks_are_refused
+    Dir.mktmpdir do |root|
+      FileUtils.cp_r(File.join(IntrospectHelper::APP, "app"), root)
+      path = File.join(root, "app/controllers/posts_controller.rb")
+      File.write(path, File.read(path).sub(/^end\s*\z/, "  layout \"x\"\nend\n"))
+      moved = Rutile::Build::App.new(root, IntrospectHelper.manifest)
+      error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(moved, "PostsController").to_rust }
+      assert_match(%r{\Aapp/controllers/posts_controller.rb:\d+: layout in a class body isn't supported yet\z}, error.message)
+    end
   end
 end

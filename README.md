@@ -40,7 +40,7 @@ pub fn update(&mut self, req: &mut Request) -> Result<Response> {
 }
 ```
 
-`@post` may be nil in Ruby, so it's an `Option`, and calling a method on nil is the same error Ruby raises. The receiver is evaluated before `post_params`, as in Ruby.
+`@post` may be nil in Ruby, so it's an `Option`, and calling a method on nil is the same error Ruby raises. `post_params` runs once, and the record it updates is the one it saves.
 
 The commands, in the order you'd run them:
 

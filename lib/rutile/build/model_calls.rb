@@ -92,6 +92,9 @@ module Rutile
             @uses.rt("Blank")
             return Code["#{receiver.rust}.#{Names.method(name)}()", T::BOOL, receiver.ctx]
           end
+          # Only true is present; nil and false are blank.
+          return Code["#{receiver.rust} #{name == "present?" ? "==" : "!="} Some(true)", T::BOOL, receiver.ctx] if inner == T::BOOL
+
           return Code["#{receiver.rust}.#{name == "present?" ? "is_some" : "is_none"}()", T::BOOL, receiver.ctx]
         end
         @uses.rt("Error")

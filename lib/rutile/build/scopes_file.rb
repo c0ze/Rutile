@@ -123,6 +123,7 @@ module Rutile
       # Any model that has the scope types its parameters: the columns come
       # from the table every model shares the shape of.
       def to_rust
+        Declarations.check(@app, Scopes::APPLICATION_RECORD, Declarations::MODEL)
         entries = scopes
         @uses.rt("Model")
         traits = Scopes.new(@app, @uses, entries.first.last, "ApplicationRecordScopes", "Relation<M>", "<M: Model>")

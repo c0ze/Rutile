@@ -24,6 +24,8 @@ end
 require_relative "build/names"
 require_relative "build/types"
 require_relative "build/source"
+require_relative "build/regexp"
+require_relative "build/declarations"
 require_relative "build/app"
 require_relative "build/borrowing"
 require_relative "build/model_calls"

@@ -18,10 +18,9 @@ module Rutile
       def model?(name) = models.any? { _1["name"] == name }
       def model_path(name) = model(name).dig("source", "path")
 
-      def columns(name)
-        table = model(name)["table_name"]
-        manifest.fetch("tables").find { _1["name"] == table }.fetch("columns")
-      end
+      def table(name) = manifest.fetch("tables").find { _1["name"] == model(name)["table_name"] }
+
+      def columns(name) = table(name).fetch("columns")
 
       def column(name, column) = columns(name).find { _1["name"] == column.to_s }
 

@@ -1,3 +1,4 @@
+require "fileutils"
 require_relative "../build_helper"
 
 class ModelFileTest < Minitest::Test
@@ -124,5 +125,68 @@ class ModelFileTest < Minitest::Test
 
   def test_format_validation_keeps_the_ruby_regexp
     assert_rust_includes rust("User"), %q{.validates("email", Check::Format(Regex::new(r"\A[a-zA-Z0-9.!\#$%&'*+/=?^_`{|}~-]+@}
+  end
+
+  # Rails prepends after_* callbacks, so `after_create :a, :b` is chained
+  # [b, a] and runs a, then b.
+  def test_after_callbacks_run_in_declaration_order
+    changed = app_with do |m|
+      comment = m["models"].find { _1["name"] == "Comment" }
+      bump = comment["callbacks"]["create"].first
+      check = comment["callbacks"]["validate"].find { _1.dig("filter", "method") == "post_is_published" }
+      comment["callbacks"]["create"] = [bump, check.merge("kind" => "after", "if" => bump["if"])]
+    end
+    assert_rust_includes rust("Comment", changed), <<~RUST
+      // after_create :post_is_published (app/models/comment.rb:12)
+      .after_create(Comment::post_is_published)
+      // after_create :bump_post_counter (app/models/comment.rb:16)
+      .after_create(Comment::bump_post_counter)
+    RUST
+  end
+
+  def test_callbacks_the_behavior_chain_cannot_express_are_refused
+    hook = ->(method, origin) { { "kind" => "before", "filter" => { "method" => method, "origin" => origin, "source" => nil }, "if" => [], "unless" => [] } }
+    cases = {
+      "validate :post_is_published with a condition Rails added (such as on:)" => lambda do |c|
+        c["callbacks"]["validate"].find { _1.dig("filter", "method") == "post_is_published" }["if"] = [{ "proc" => nil, "origin" => "framework" }]
+      end,
+      "after_commit :bump_post_counter" => ->(c) { c["callbacks"]["commit"] = [c["callbacks"]["create"].first] },
+      "before_save :audit from outside the app" => ->(c) { c["callbacks"]["save"] << hook.("audit", "framework") },
+      "before_save :audit, which nothing defines," => ->(c) { c["callbacks"]["save"] << hook.("audit", "missing") }
+    }
+    cases.each do |message, change|
+      broken = app_with { |m| change.(m["models"].find { _1["name"] == "Comment" }) }
+      error = assert_raises(Rutile::Build::Unsupported, message) { rust("Comment", broken) }
+      assert_includes error.message, message
+    end
+  end
+
+  # `validates :user, presence: true` checks the association in Rails; here
+  # it would check a column that doesn't exist and always fail.
+  def test_validators_on_non_columns_are_refused
+    broken = app_with { |m| m["models"].find { _1["name"] == "Post" }["validators"][2]["attributes"] = ["author"] }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", broken) }
+    assert_equal "app/models/post.rb: a presence validator on author, which isn't a column, isn't supported yet", error.message
+  end
+
+  def test_class_level_calls_the_manifest_lacks_are_refused
+    Dir.mktmpdir do |root|
+      FileUtils.cp_r(File.join(IntrospectHelper::APP, "app"), root)
+      post = File.join(root, "app/models/post.rb")
+      File.write(post, File.read(post).sub(/^end\s*\z/, "  default_scope { order(:id) }\nend\n"))
+      moved = Rutile::Build::App.new(root, IntrospectHelper.manifest)
+      error = assert_raises(Rutile::Build::Unsupported) { rust("Post", moved) }
+      assert_equal "app/models/post.rb:19: default_scope in a class body isn't supported yet", error.message
+    end
+  end
+
+  def test_keys_and_defaults_the_runtime_cannot_honor_are_refused
+    posts = ->(m) { m["tables"].find { _1["name"] == "posts" } }
+    slug = app_with { posts.(_1)["primary_key"] = "slug" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", slug) }
+    assert_equal "app/models/post.rb: a primary key other than id isn't supported yet", error.message
+    stamped = app_with { posts.(_1)["columns"].find { |c| c["name"] == "created_at" }["default_function"] = "now()" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", stamped) }
+    assert_equal "app/models/post.rb: the database default now() on created_at isn't supported yet", error.message
   end
 end

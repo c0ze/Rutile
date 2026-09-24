@@ -116,17 +116,20 @@ module Rutile
         end
       end
 
-      # `{ error: "not found" }` as `json!`.
+      # `{ error: "not found" }` as `json!`, values in Ruby's order.
       def json_literal(node)
-        values = node.elements.map do |pair|
+        pairs = node.elements.each do |pair|
           key = pair.is_a?(Prism::AssocNode) && (pair.key.is_a?(Prism::SymbolNode) || pair.key.is_a?(Prism::StringNode))
           unsupported!(node, "a hash key that isn't a symbol or string") unless key
-          value = expr(pair.value)
-          plain = [T::STR, T::INT, T::BOOL, T::JSON].include?(value.type)
-          [pair.key.unescaped, plain ? value : json_of(value, pair.value)]
         end
-        codes = settle(values.map(&:last), :none)
-        fields = values.map(&:first).zip(codes).map { |key, code| "#{Names.str(key)}: #{owned(code)}" }
+        codes = in_order(pairs) do |pair|
+          value = expr(pair.value)
+          value = json_of(value, pair.value) unless [T::STR, T::INT, T::BOOL, T::JSON].include?(value.type)
+          name = pair.key.unescaped
+          value.hint || !name.match?(/\A[a-z_][a-z0-9_]*\z/) ? value : value.with(hint: name)
+        end
+        codes = settle(codes, :none)
+        fields = pairs.zip(codes).map { |pair, code| "#{Names.str(pair.key.unescaped)}: #{owned(code)}" }
         @uses.rt("json")
         Code["json!({ #{fields.join(", ")} })", T::JSON, codes.any?(&:writes?) ? :write : (codes.any?(&:reads?) ? :read : :none)]
       end

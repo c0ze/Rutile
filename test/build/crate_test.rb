@@ -46,4 +46,22 @@ class CrateTest < Minitest::Test
       assert_match(/cargo check failed/, error.message)
     end
   end
+
+  # --out and --runtime swapped would otherwise delete RustOnRails/src.
+  def test_a_src_rutile_did_not_write_is_left_alone
+    Dir.mktmpdir do |out|
+      FileUtils.mkdir_p(File.join(out, "src"))
+      File.write(File.join(out, "src/lib.rs"), "pub fn mine() {}\n")
+      error = assert_raises(Rutile::Build::Error) { build(out) }
+      assert_equal "#{out}/src wasn't written by Rutile; refusing to replace it", error.message
+      assert_equal "pub fn mine() {}\n", File.read(File.join(out, "src/lib.rs"))
+    end
+  end
+
+  # A crate name may have a hyphen; a Rust path can't.
+  def test_a_hyphenated_name_is_an_underscored_path
+    main = Rutile::Build::Crate.new(app, "/unused", name: "my-blog", runtime: RUNTIME).files["src/main.rs"]
+    assert_includes main, "server::start(my_blog::routes::routes(), config)?"
+    assert_includes main, 'eprintln!("my-blog listening on {}", running.address);'
+  end
 end

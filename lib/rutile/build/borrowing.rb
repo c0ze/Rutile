@@ -20,7 +20,7 @@ module Rutile
       def bind(code)
         name = fresh(code.hint || "value")
         @lines << "let #{name} = #{code.rust};"
-        Code[name, code.type, hint: code.hint, **code.extra.except(:literal, :local, :safe)]
+        Code[name, code.type, hint: code.hint, **code.extra.except(:literal, :local, :safe, :nav)]
       end
 
       def fresh(hint)
@@ -43,6 +43,24 @@ module Rutile
                  else code.writes? && touching > 1
                  end
           must ? bind(code) : code
+        end
+      end
+
+      # Translates `nodes` left to right. Before one that runs statements or
+      # writes the Ctx, the earlier ones that read it become locals, so they
+      # see the state Ruby would.
+      def in_order(nodes)
+        nodes.each_with_object([]) do |node, codes|
+          mark = @lines.size
+          code = yield(node)
+          if code.writes? || @lines.size > mark
+            codes.each_index.select { codes[_1].reads? }.each_with_index do |i, n|
+              name = fresh(codes[i].hint || "value")
+              @lines.insert(mark + n, "let #{name} = #{codes[i].rust};")
+              codes[i] = Code[name, codes[i].type, hint: codes[i].hint]
+            end
+          end
+          codes << code
         end
       end
 
