@@ -44,6 +44,8 @@ module Rutile
       JSON_OPT = self[:json_opt]
       TIME_CLASS = self[:time_class]
       HEADERS = self[:headers]
+      NIL = self[:nil]
+      COND = self[:cond]
     end
 
     # A translated expression: its Rust source, its type, and whether it

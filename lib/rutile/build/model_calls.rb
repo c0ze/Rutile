@@ -27,9 +27,11 @@ module Rutile
 
       def write_attribute(receiver, attribute, type, arg, node)
         value = expr(arg)
-        unsupported!(node, "assigning #{describe(value.type)} to #{attribute}") unless [type, T.nilable(type)].include?(value.type)
+        unless [type, T.nilable(type), T::NIL].include?(value.type)
+          unsupported!(node, "assigning #{describe(value.type)} to #{attribute}")
+        end
         receiver, value = settle([receiver, value], :write)
-        assigned = value.type.nilable? ? owned(value) : "Some(#{owned(value, type)})"
+        assigned = value.type.nilable? || value.type == T::NIL ? owned(value) : "Some(#{owned(value, type)})"
         Code["#{ctx_recv}[#{receiver.rust}].#{attribute} = #{assigned}", T::UNIT, :write]
       end
 
@@ -127,6 +129,10 @@ module Rutile
         end
         unsupported!(node, "where on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
         code = expr(value)
+        if code.type == T::NIL
+          @uses.rt("Value")
+          return ".where_eq(#{Names.str(column)}, Value::Nil)"
+        end
         unsupported!(node, "where with #{describe(code.type)}") if code.type.nilable? || code.reads?
         ".where_eq(#{Names.str(column)}, #{owned(code)})"
       end

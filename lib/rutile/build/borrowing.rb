@@ -8,7 +8,8 @@ module Rutile
 
       def truthy(code, node)
         type = code.type
-        return code.rust if type == T::BOOL
+        return code.rust if type == T::BOOL || type == T::COND
+        return "false" if type == T::NIL
         unsupported!(node, "a condition on #{describe(type)}") unless type.nilable?
         return "#{code.rust}.is_some()" unless type.inner == T::BOOL
 
@@ -121,6 +122,7 @@ module Rutile
         when :record, :class then type.model
         when :relation then "a relation of #{type.model}"
         when :nilable then "#{describe(type.inner)} or nil"
+        when :cond then "the value of && or ||"
         else type.kind.to_s.tr("_", " ")
         end
       end

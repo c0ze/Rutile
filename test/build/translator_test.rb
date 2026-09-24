@@ -130,4 +130,45 @@ class TranslatorTest < Minitest::Test
     assert_rust_includes callback("self.body = send(:title)"), "let title = ctx[post].title.clone(); ctx[post].body = title;"
     assert_rust_includes callback('self.body = public_send("title")'), "ctx[post].body = title"
   end
+
+  def test_and_or_not_as_conditions
+    assert_rust_includes callback("self.title = \"x\" if body.present? && !published?"),
+                         "if ctx[post].body.clone().is_present() && !(ctx[post].is_published()) {"
+  end
+
+  # The right side's statements run only when Ruby would evaluate it.
+  def test_the_right_side_of_and_keeps_its_statements_to_itself
+    assert_rust_includes callback("self.title = \"x\" if published? && user.name.present?"), <<~RUST
+      if ctx[post].is_published() && {
+          let user = Post::USER.get(ctx, post)?.ok_or(Error::Nil { what: "name" })?;
+          ctx[user].name.clone().is_present()
+      } {
+    RUST
+  end
+
+  def test_comparisons_unwrap_nil_as_ruby_raises
+    assert_rust_includes callback("self.title = \"x\" if comments_count > 0 && published_at < Time.current"),
+                         'if ctx[post].comments_count.ok_or(Error::Nil { what: ">" })? > 0 && ' \
+                         'ctx[post].published_at.ok_or(Error::Nil { what: "<" })? < now() {'
+  end
+
+  def test_equality_with_literals_and_nil
+    assert_rust_includes callback("self.body = \"x\" if title == \"a\" || user_id == nil"),
+                         'if ctx[post].title.clone().as_deref() == Some("a") || ctx[post].user_id.is_none() {'
+  end
+
+  def test_a_ternary_with_a_nil_branch_is_an_option
+    assert_rust_includes callback("self.published_at = published? ? Time.current : nil"),
+                         "let value = if ctx[post].is_published() { Some(now()) } else { None }; ctx[post].published_at = value;"
+  end
+
+  def test_return_in_a_callback
+    assert_rust_includes callback("return if title.nil?\nself.body = \"x\""), "if ctx[post].title.clone().is_none() { return Ok(()); }"
+  end
+
+  # Ruby's `a || b` returns an operand; only its truth is compiled.
+  def test_the_value_of_or_is_refused
+    error = assert_raises(Rutile::Build::Unsupported) { callback("self.title = title || body") }
+    assert_equal "snippet.rb:1: assigning the value of && or || to title isn't supported yet", error.message
+  end
 end

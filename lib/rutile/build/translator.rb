@@ -17,6 +17,7 @@ module Rutile
       include Borrowing
       include WebCalls
       include ControlFlow
+      include Expressions
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -111,6 +112,7 @@ module Rutile
         when Prism::LocalVariableWriteNode then assign_local(node)
         when Prism::InstanceVariableWriteNode then assign_ivar(node)
         when Prism::CallOrWriteNode then or_assign(node)
+        when Prism::ReturnNode then early_return(node)
         else
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
@@ -165,11 +167,24 @@ module Rutile
         @lines.push("if #{falsy} {", *assignment, "}")
       end
 
+      # `return` in a callback or a filter; a value to return isn't compiled.
+      def early_return(node)
+        unsupported!(node, "return with a value") if node.arguments
+        case @mode
+        when :unit then @lines << (@result ? "return Ok(());" : "return;")
+        when :filter then @lines << "return Ok(None);"
+        else unsupported!(node, "return here")
+        end
+      end
+
       def expr(node)
         case node
         when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::IntegerNode then Code[node.value.to_s, T::INT]
+        when Prism::NilNode then Code["None", T::NIL]
+        when Prism::AndNode, Prism::OrNode then logic(node)
+        when Prism::IfNode then ternary(node)
         when Prism::TrueNode then Code["true", T::BOOL]
         when Prism::FalseNode then Code["false", T::BOOL]
         when Prism::ParenthesesNode then expr(only(node.body&.body || [], node))
@@ -219,6 +234,8 @@ module Rutile
           args = args.drop(1)
         end
         return self_call(node, name, args) if node.receiver.nil?
+        return negate(expr(node.receiver), node) if name == "!" && args.empty?
+        return compare(expr(node.receiver), node, name, args.first) if Expressions::COMPARE.include?(name) && args.size == 1
 
         receiver = expr(node.receiver)
         unsupported!(node, "a call chained after &.") if receiver.extra[:nav]
