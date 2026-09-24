@@ -25,6 +25,7 @@ module Rutile
       def self.relation(model) = Type.new(kind: :relation, model:, inner: nil)
       def self.records(model) = Type.new(kind: :records, model:, inner: nil)
       def self.errors(model) = Type.new(kind: :errors, model:, inner: nil)
+      def self.where_chain(model) = Type.new(kind: :where_chain, model:, inner: nil)
       def self.klass(model) = Type.new(kind: :class, model:, inner: nil)
       def self.nilable(inner) = Type.new(kind: :nilable, model: nil, inner:)
 

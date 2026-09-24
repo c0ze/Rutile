@@ -47,4 +47,29 @@ class InheritedTest < Minitest::Test
     assert_equal "app/controllers/posts_controller.rb:38: render or head anywhere but at the end of an action or filter " \
                  "isn't supported yet", error.message
   end
+
+  # memberships.create!(user: owner, role: :admin): build through the
+  # association, set a belongs_to and an enum, save or raise.
+  def test_create_through_an_association_with_a_hash
+    app = tracker
+    rust = Rutile::Build::ModelFile.new(app, "Project").to_rust
+    assert_rust_includes rust, <<~RUST
+      let membership = Project::MEMBERSHIPS.build(ctx, project, Membership::new_record())?;
+      let owner = Project::OWNER.get(ctx, project)?;
+      if let Some(owner) = owner {
+          Membership::USER.set(ctx, membership, owner)?;
+      }
+      ctx[membership].role = Some("admin".to_string());
+      ctx.save_bang(membership)?;
+      Ok(())
+    RUST
+    refute app.diagnostics.problems.any? { _1.include?("create!") }, app.diagnostics.problems.join("\n")
+  end
+
+  def test_create_bang_with_params
+    rust, problems = controller("UsersController")
+    assert_rust_includes rust, "req.ctx.build(User::from_attributes(&attributes)?)"
+    assert_rust_includes rust, "req.ctx.save_bang("
+    refute problems.any? { _1.include?("create!") }, problems.join("\n")
+  end
 end

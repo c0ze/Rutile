@@ -171,4 +171,20 @@ class TranslatorTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { callback("self.title = title || body") }
     assert_equal "snippet.rb:1: assigning the value of && or || to title isn't supported yet", error.message
   end
+
+  def test_update_bang_with_a_hash
+    assert_rust_includes callback("update!(title: \"x\", published_at: Time.current)"),
+                         'ctx[post].title = Some("x".to_string()); ctx[post].published_at = Some(now()); ctx.save_bang(post)?;'
+  end
+
+  def test_create_with_an_unknown_key_is_refused
+    error = assert_raises(Rutile::Build::Unsupported) { callback("Comment.create!(bogus: 1)") }
+    assert_equal "snippet.rb:1: bogus, which Comment has no column or belongs_to for, isn't supported yet", error.message
+  end
+
+  def test_where_not
+    translator = Rutile::Build::Translator.new(app, "s.rb", Rutile::Build::Uses.new, env: :scope, model: "Post", result: false)
+    lines, = translator.body(Prism.parse("where.not(status: :draft).where.not(published_at: nil)").value.statements, :value)
+    assert_rust_includes lines.join, 'self.where_not("status", "draft").where_not("published_at", Value::Nil)'
+  end
 end

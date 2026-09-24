@@ -59,7 +59,8 @@ module Rutile
         when ["valid?", 0] then mutate(receiver, "is_valid", T::BOOL)
         when ["reload", 0] then mutate(receiver, "reload", T::UNIT)
         when ["increment!", 1] then mutate(receiver, "increment_bang", T::UNIT, Names.str(symbol!(args.first, node)), "1")
-        when ["update", 1] then update(receiver, node, args.first)
+        when ["update", 1] then hash?(args.first) ? update_record(receiver, node, args.first, false) : update(receiver, node, args.first)
+        when ["update!", 1] then update_record(receiver, node, args.first, true)
         when ["errors", 0]
           receiver = settle([receiver], :read).first
           Code["#{ctx_recv}.errors(#{receiver.rust})", T.errors(model), :read, owner: receiver.rust]
@@ -109,12 +110,18 @@ module Rutile
         model = receiver.type.model
         chain = ->(rust) { Code["#{receiver.rust}#{rust}", T.relation(model), receiver.ctx, hint: receiver.hint] }
         case name
-        when "where" then chain.(pairs(args, node).map { |column, value| where(model, column, value, node) }.join)
+        when "where"
+          return Code[receiver.rust, T.where_chain(model), receiver.ctx, hint: receiver.hint] if args.empty?
+
+          chain.(pairs(args, node).map { |column, value| where(model, column, value, node) }.join)
         when "order" then chain.(order(args, node))
         when "limit" then chain.(".limit(#{only(args, node).then { |n| n.is_a?(Prism::IntegerNode) ? n.value : unsupported!(n, "a non-literal limit") }})")
         when "includes" then chain.(args.map { ".includes(&#{model}::#{Names.constant(symbol!(_1, node))})" }.join)
         when "all" then receiver
         when "new", "build" then build_through(receiver, node, args)
+        when "create", "create!"
+          via = receiver.extra[:via] or return nil
+          create_record(model, only(args, node), name.end_with?("!"), node, via:)
         when "as_json" then render_relation(receiver, model, args.first, node)
         else scope_call(receiver, model, name, node, args)
         end
@@ -186,6 +193,9 @@ module Rutile
           need_ctx!(node)
           id = settle([expr(only(args, node))], :write).first
           Code["#{model}::find(#{ctx_mut}, #{owned(id)})?", T.record(model), :write, hint:]
+        when "create", "create!"
+          need_ctx!(node)
+          create_record(model, only(args, node), name.end_with?("!"), node)
         when "find_by", "find_by!"
           need_ctx!(node)
           column, value = only(pairs(args, node), node)

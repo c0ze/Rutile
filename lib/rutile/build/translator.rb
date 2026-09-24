@@ -14,6 +14,7 @@ module Rutile
       SENDS = %w[send public_send __send__].freeze
 
       include ModelCalls
+      include RecordCalls
       include Borrowing
       include WebCalls
       include ControlFlow
@@ -116,7 +117,8 @@ module Rutile
         else
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
-          @lines << "#{code.rust};"
+          # A plain name (the record `create!` returns) as a statement does nothing.
+          @lines << "#{code.rust};" unless code.rust.match?(/\A[a-z_][a-z0-9_]*\z/)
         end
       end
 
