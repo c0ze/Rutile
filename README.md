@@ -6,7 +6,7 @@ Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The sou
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
-**Status:** started 2026-09-25. `rutile introspect` and `rutile build` work on the PoC app, [examples/blog](examples/blog): the Rust crate in `RustOnRails/examples/blog` is generated (`bundle exec rake example:build`), passes the Rust tests written for the hand port it replaced, and passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`). The Rust side serves 21 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile check` doesn't exist yet; anything outside the subset makes `rutile build` stop with the file and line.
+**Status:** started 2026-09-25. `rutile introspect` and `rutile build` work on the PoC app, [examples/blog](examples/blog): the Rust crate in `RustOnRails/examples/blog` is generated (`bundle exec rake example:build`), passes the Rust tests written for the hand port it replaced, and passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`). The Rust side serves 16 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile check` doesn't exist yet; anything outside the subset makes `rutile build` stop with the file and line.
 
 ## What it does
 
