@@ -41,7 +41,7 @@ module Rutile
       def closure(block)
         raise Unsupported.at(@path, block, "a callback block with parameters") if block.parameters
 
-        lines = translate(block.body)
+        lines = translate(block.body, block: true)
         ctx, record = parameter_names(lines)
         "|#{ctx}, #{record}| {\n#{lines.join("\n")}\nOk(())\n}"
       end
@@ -177,8 +177,8 @@ module Rutile
           "#{lines.join("\n")}\nOk(())\n}"
       end
 
-      def translate(body)
-        Translator.new(@app, @path, @uses, env: :model, model: @name, self_var: var).body(body, :unit).first
+      def translate(body, block: false)
+        Translator.new(@app, @path, @uses, env: :model, model: @name, self_var: var, block:).body(body, :unit).first
       end
 
       def var = Names.snake(@name)

@@ -33,11 +33,14 @@ module Rutile
         handle
       end
 
-      # Each key a column (enum columns take labels) or a belongs_to.
+      # Each key a column (enum columns take labels) or a belongs_to. Ruby
+      # evaluates the whole hash before anything is assigned, so every value
+      # that reads the Ctx is a local first.
       def assign_pairs(handle, model, entries, node)
-        entries.each do |key, value|
+        values = in_order(entries.map(&:last)) { value(_1) }.map { _1.reads? ? bind(_1) : _1 }
+        entries.zip(values).each do |(key, _), value|
           if (type = @app.column_type(model, key))
-            @lines << "#{write_attribute(handle, key, type, value, node).rust};"
+            @lines << "#{write_value(handle, key, type, value, node).rust};"
           elsif (assoc = @app.association(model, key)) && assoc["macro"] == "belongs_to"
             set_association(handle, model, assoc, value, node)
           else
@@ -46,17 +49,19 @@ module Rutile
         end
       end
 
-      # A nil target leaves the key unset, and belongs_to's check reports it.
-      def set_association(handle, model, assoc, value_node, node)
-        value = settle([expr(value_node)], :write).first
+      # Assigning nil (or a record that isn't there) clears the key, as in Rails.
+      def set_association(handle, model, assoc, value, node)
         target = assoc["class_name"]
+        clear = "#{ctx_recv}[#{handle.rust}].#{assoc["foreign_key"]} = None;"
+        return @lines << clear if value.type == T::NIL
         unless [T.record(target), T.nilable(T.record(target))].include?(value.type)
           unsupported!(node, "#{assoc["name"]}: #{describe(value.type)}")
         end
+
         set = ->(v) { "#{model}::#{Names.constant(assoc["name"])}.set(#{ctx_mut}, #{handle.rust}, #{v})?;" }
         if value.type.nilable?
           var = local!(value).rust
-          @lines.push("if let Some(#{var}) = #{var} {", set.(var), "}")
+          @lines.push("if let Some(#{var}) = #{var} {", set.(var), "} else {", clear, "}")
         else
           @lines << set.(value.rust)
         end
@@ -81,9 +86,12 @@ module Rutile
         return nil unless name == "not"
 
         model = receiver.type.model
-        conditions = pairs(args, node).map do |column, value|
+        entries = pairs(args, node)
+        # Rails negates the conjunction: NOT(a AND b), not NOT a AND NOT b.
+        unsupported!(node, "where.not with more than one condition") if entries.size > 1
+        conditions = entries.map do |column, operand|
           unsupported!(node, "where.not on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
-          code = expr(value)
+          code = value(operand)
           if code.type == T::NIL
             @uses.rt("Value")
             next ".where_not(#{Names.str(column)}, Value::Nil)"

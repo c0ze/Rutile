@@ -58,6 +58,8 @@ class InheritedTest < Minitest::Test
       let owner = Project::OWNER.get(ctx, project)?;
       if let Some(owner) = owner {
           Membership::USER.set(ctx, membership, owner)?;
+      } else {
+          ctx[membership].user_id = None;
       }
       ctx[membership].role = Some("admin".to_string());
       ctx.save_bang(membership)?;
@@ -80,5 +82,45 @@ class InheritedTest < Minitest::Test
                                                                                                 self_var: "user")
     error = assert_raises(Rutile::Build::Unsupported) { translator.body(Prism.parse("projects.to_a").value.statements, :unit) }
     assert_equal "snippet.rb:1: has_many :projects with through isn't supported yet", error.message
+  end
+
+  def tracker_scratch(edits) = scratch_app(edits, from: TrackerHelper::APP, manifest: TrackerHelper.manifest,
+                                                  diagnostics: Rutile::Build::Diagnostics.new)
+
+  # Ruby finds the subclass's method before ApplicationController's reader.
+  def test_a_subclass_method_beats_an_inherited_reader
+    app = tracker_scratch({ "app/controllers/users_controller.rb" => lambda do |ruby|
+      ruby.sub("  private\n", "  private\n\n  def current_user = @current_user\n")
+          .sub("render json: User.find(params[:id])", "render json: current_user")
+    end })
+    rust = Rutile::Build::ControllerFile.new(app, "UsersController").to_rust
+    assert_includes rust, "fn current_user(&mut self"
+    assert_includes rust, "self.current_user(req)?"
+  end
+
+  # A String field is cloned out of the controller, not moved.
+  def test_an_inherited_string_reader_is_cloned
+    app = tracker_scratch({
+      "app/controllers/application_controller.rb" => lambda do |ruby|
+        ruby.sub("attr_reader :current_user", "attr_reader :current_user, :token")
+            .sub("    head :unauthorized", "    @token = request.headers[\"X-Api-Token\"]\n    head :unauthorized")
+      end,
+      "app/controllers/users_controller.rb" => ->(ruby) { ruby.sub("render json: User.find(params[:id]).as_json(only: %i[id name email])", "render json: { token: token, none: nil }") }
+    })
+    rust = Rutile::Build::ControllerFile.new(app, "UsersController").to_rust
+    assert_rust_includes rust, 'json!({ "token": self.token.clone(), "none": null })'
+    assert_empty app.diagnostics.problems.grep(/users_controller/)
+  end
+
+  def test_nil_into_an_ivar_is_refused
+    app = tracker_scratch({ "app/controllers/application_controller.rb" => ->(ruby) { ruby.sub("    head :unauthorized", "    @token = nil\n    head :unauthorized") } })
+    Rutile::Build::ControllerFile.new(app, "UsersController").to_rust
+    assert_includes app.diagnostics.problems, "app/controllers/application_controller.rb:13: assigning nil to @token isn't supported yet"
+  end
+
+  def test_return_in_a_callback_block_is_refused
+    app = scratch_app({ "app/models/user.rb" => ->(ruby) { ruby.sub("before_validation { self.email = email.to_s.strip.downcase }", "before_validation { return if email.nil? }") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "User").to_rust }
+    assert_equal "app/models/user.rb:5: return inside a block isn't supported yet", error.message
   end
 end

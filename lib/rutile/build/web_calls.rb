@@ -127,7 +127,10 @@ module Rutile
         end
         codes = in_order(pairs) do |pair|
           value = expr(pair.value)
-          value = json_of(value, pair.value) unless [T::STR, T::INT, T::BOOL, T::JSON, T::NIL].include?(value.type)
+          next Code["null", T::JSON] if value.type == T::NIL
+
+          plain = [T::STR, T::INT, T::BOOL, T::FLOAT, T::JSON]
+          value = json_of(value, pair.value) unless plain.include?(value.type) || (value.type.nilable? && plain.include?(value.type.inner))
           name = pair.key.unescaped
           value.hint || !name.match?(/\A[a-z_][a-z0-9_]*\z/) ? value : value.with(hint: name)
         end

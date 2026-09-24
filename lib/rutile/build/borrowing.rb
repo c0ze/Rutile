@@ -17,6 +17,14 @@ module Rutile
         receiver ? "#{receiver}.is_some_and(|#{var}| #{body})" : "#{code.rust} == Some(true)"
       end
 
+      # An expression used as a value. `&&` and `||` of non-booleans compile
+      # to their truth only, so their value can't be used.
+      def value(node)
+        code = expr(node)
+        unsupported!(node, "using the value of && or ||") if code.type == T::COND
+        code
+      end
+
       # Binds `code` to a fresh local named after its hint.
       def bind(code)
         name = fresh(code.hint || "value")

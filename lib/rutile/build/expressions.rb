@@ -14,19 +14,21 @@ module Rutile
       def logic(node)
         left = expr(node.left)
         lines, right = capture { expr(node.right) }
-        right_rust = truthy(right, node.right)
+        right_rust = group(truthy(right, node.right), right, logic: true)
         right_rust = "{\n#{lines.join("\n")}\n#{right_rust}\n}" unless lines.empty?
         operator = node.is_a?(Prism::AndNode) ? "&&" : "||"
         type = left.type == T::BOOL && right.type == T::BOOL ? T::BOOL : T::COND
-        Code["#{truthy(left, node.left)} #{operator} #{right_rust}", type, touch(left, right)]
+        Code["#{group(truthy(left, node.left), left, logic: true)} #{operator} #{right_rust}", type, touch(left, right), logic: true]
       end
 
       def negate(receiver, node) = Code["!(#{truthy(receiver, node)})", T::BOOL, receiver.ctx]
 
       # `==` and `!=` compare like types (an Option with its value); the
       # ordering operators raise on nil, as Ruby's NoMethodError does.
-      def compare(left, node, name, arg)
-        right = expr(arg)
+      # Both sides in Ruby's order: the left is read before the right's
+      # statements run.
+      def compare(node, name, arg)
+        left, right = in_order([node.receiver, arg]) { value(_1) }
         rust = if [left, right].any? { _1.type == T::NIL }
                  nil_compare(left, right, name, node)
                elsif %w[== !=].include?(name)
@@ -38,15 +40,17 @@ module Rutile
                    unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}")
                  end
                  left, right = settle([left, right], :none)
-                 "#{left.rust} #{name} #{right.rust}"
+                 "#{group(left.rust, left)} #{name} #{group(right.rust, right)}"
                end
-        Code[rust, T::BOOL, touch(left, right)]
+        Code[rust, T::BOOL, touch(left, right), compared: true]
       end
 
       def nil_compare(left, right, name, node)
-        value = left.type == T::NIL ? right : left
-        return name == "==" ? "false" : "true" unless value.type.nilable?
         unsupported!(node, "#{name} with nil") unless %w[== !=].include?(name)
+        return name == "==" ? "true" : "false" if left.type == T::NIL && right.type == T::NIL
+
+        value = left.type == T::NIL ? right : left
+        unsupported!(node, "#{name} nil on a value that's never nil") unless value.type.nilable?
 
         "#{value.rust}.#{name == "==" ? "is_none" : "is_some"}()"
       end
@@ -56,7 +60,7 @@ module Rutile
         l = left.type.nilable? ? left.type.inner : left.type
         r = right.type.nilable? ? right.type.inner : right.type
         unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}") unless l == r
-        a, b = [left, right].map { side(_1, [left, right].any? { |c| c.type.nilable? }) }
+        a, b = [left, right].map { group(side(_1, [left, right].any? { |c| c.type.nilable? }), _1) }
         "#{a} #{name} #{b}"
       end
 
@@ -97,6 +101,14 @@ module Rutile
         return [b.type, "None", owned(b)] if a.type == T::NIL
 
         unsupported!(node, "an if whose branches have different types")
+      end
+
+      # An operand keeps its own grouping: `a && (b || c)`, and a comparison
+      # of comparisons, which Rust won't chain. A comparison inside && or ||
+      # needs no parentheses.
+      def group(rust, code, logic: false)
+        needs = code.extra[:logic] || (!logic && code.extra[:compared])
+        needs ? "(#{rust})" : rust
       end
 
       def capture

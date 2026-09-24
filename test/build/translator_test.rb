@@ -187,4 +187,65 @@ class TranslatorTest < Minitest::Test
     lines, = translator.body(Prism.parse("where.not(status: :draft).where.not(published_at: nil)").value.statements, :value)
     assert_rust_includes lines.join, 'self.where_not("status", "draft").where_not("published_at", Value::Nil)'
   end
+
+  def refused(ruby, model: "Post") = assert_raises(Rutile::Build::Unsupported) { callback(ruby, model:) }.message
+
+  def test_grouping_survives
+    assert_rust_includes callback('self.title = "x" if false && (true || save)'), "if false && (true || ctx.save(post)?) {"
+    assert_rust_includes callback('self.title = "x" if (title == "a") == published?'),
+                         'if (ctx[post].title.clone().as_deref() == Some("a")) == ctx[post].is_published() {'
+  end
+
+  def test_nil_comparisons
+    assert_rust_includes callback('self.title = "x" if nil == nil'), "if true {"
+    assert_equal "snippet.rb:1: < with nil isn't supported yet", refused('self.title = "x" if nil < 1')
+    assert_equal "snippet.rb:1: == nil on a value that's never nil isn't supported yet", refused('self.title = "x" if save == nil')
+  end
+
+  # Ruby reads draft? before update runs.
+  def test_a_comparison_reads_the_left_side_first
+    assert_rust_includes callback('self.title = "x" if draft? == update(status: :published)'), <<~RUST
+      let value = ctx[post].is_draft();
+      ctx[post].status = Some("published".to_string());
+      if value == ctx.save(post)? {
+    RUST
+  end
+
+  # Ruby evaluates the whole hash before update! assigns anything.
+  def test_hash_values_are_all_read_before_any_is_assigned
+    assert_rust_includes callback("update!(title: body, body: title)"), <<~RUST
+      let body = ctx[post].body.clone();
+      let title = ctx[post].title.clone();
+      ctx[post].title = body;
+      ctx[post].body = title;
+      ctx.save_bang(post)?;
+    RUST
+  end
+
+  # Assigning nil to a belongs_to clears the key, as Rails does.
+  def test_a_nil_association_clears_the_key
+    assert_rust_includes callback("update!(post: Post.find_by(id: 1))", model: "Comment"), <<~RUST
+      let post = Post::find_by(ctx, "id", 1)?;
+      if let Some(post) = post {
+          Comment::POST.set(ctx, comment, post)?;
+      } else {
+          ctx[comment].post_id = None;
+      }
+    RUST
+  end
+
+  def test_what_would_change_meaning_is_refused
+    assert_equal "snippet.rb:1: using the value of && or || isn't supported yet", refused("x = title || body")
+    assert_equal "snippet.rb:1: a local assigned nil isn't supported yet", refused("x = nil")
+    assert_equal "snippet.rb:1: &. with an operator isn't supported yet", refused('self.title = "x" if title&.==(nil)')
+    assert_equal "snippet.rb:1: where.not with more than one condition isn't supported yet",
+                 refused("Post.where.not(title: \"x\", status: :draft)")
+  end
+
+  # A block's return is nonlocal in Ruby; a trailing return in a method is a no-op.
+  def test_return_boundaries
+    lines = callback("self.title = \"x\"\nreturn")
+    refute_includes lines, "return"
+    assert_equal "snippet.rb:2: code after return isn't supported yet", refused("return\nself.title = \"x\"")
+  end
 end

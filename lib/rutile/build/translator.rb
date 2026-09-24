@@ -23,7 +23,7 @@ module Rutile
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
       # lambda). `result` is false for functions that don't return Result.
-      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true)
+      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false)
         @app = app
         @path = path
         @uses = uses
@@ -32,6 +32,9 @@ module Rutile
         @self_var = self_var
         @controller = controller
         @result = result
+        # A Ruby block's `return` leaves the enclosing method; Rust's wouldn't.
+        @block = block
+        @depth = 0
         @locals = {}
         @writes = Hash.new(0)
         @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS].compact)
@@ -65,12 +68,19 @@ module Rutile
         return [["Ok(None)"], T::UNIT] if statements.empty? && tail == :filter
         raise Unsupported, "#{@path}: a body or branch that returns nothing" if statements.empty? && tail != :unit
 
+        @depth += 1
         type = T::UNIT
         statements.each_with_index do |node, i|
-          i == statements.size - 1 && tail != :unit ? type = tail_statement(node, tail) : statement(node)
+          last = i == statements.size - 1
+          unsupported!(statements[i + 1], "code after return") if node.is_a?(Prism::ReturnNode) && !last
+          # A method's trailing `return` is where it ends anyway.
+          next if node.is_a?(Prism::ReturnNode) && last && @depth == 1 && tail == :unit && !@block && !node.arguments
+
+          last && tail != :unit ? type = tail_statement(node, tail) : statement(node)
         end
         [@lines, type]
       ensure
+        @depth -= 1
         @lines = saved
         # A local first assigned in here doesn't exist after it in Rust.
         @locals = locals
@@ -126,7 +136,8 @@ module Rutile
         name = node.name.to_s
         unsupported!(node, "assigning to the parameter #{name}") if @params.include?(name)
         rust = @renames.fetch(name, name)
-        code = expr(node.value)
+        code = value(node.value)
+        unsupported!(node, "a local assigned nil") if code.type == T::NIL
         if (known = @locals[name])
           raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
 
@@ -141,7 +152,8 @@ module Rutile
       def assign_ivar(node)
         raise Unsupported.at(@path, node, "instance variables here") unless @env == :controller
 
-        code = settle([expr(node.value)], :none).first
+        code = settle([value(node.value)], :none).first
+        unsupported!(node, "assigning nil to #{node.name}") if code.type == T::NIL
         name = node.name.to_s.delete_prefix("@")
         @controller.ivar(name, code.type, node)
         @lines << "self.#{name} = #{code.type.nilable? ? owned(code) : "Some(#{owned(code)})"};"
@@ -167,16 +179,6 @@ module Rutile
         @lines = saved
         falsy = type == T::BOOL ? "!#{field}.unwrap_or(false)" : "#{field}.is_none()"
         @lines.push("if #{falsy} {", *assignment, "}")
-      end
-
-      # `return` in a callback or a filter; a value to return isn't compiled.
-      def early_return(node)
-        unsupported!(node, "return with a value") if node.arguments
-        case @mode
-        when :unit then @lines << (@result ? "return Ok(());" : "return;")
-        when :filter then @lines << "return Ok(None);"
-        else unsupported!(node, "return here")
-        end
       end
 
       def expr(node)
@@ -206,7 +208,9 @@ module Rutile
       def ivar_named(name, node)
         unsupported!(node, "instance variables here") unless @env == :controller
         type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
-        Code["self.#{name}", T.nilable(type), hint: name]
+        # A String field is cloned: the controller is borrowed, not owned.
+        field = T.nilable(type).copy? ? "self.#{name}" : "self.#{name}.clone()"
+        Code[field, T.nilable(type), hint: name]
       end
 
       def self_code(node)
@@ -236,8 +240,10 @@ module Rutile
           args = args.drop(1)
         end
         return self_call(node, name, args) if node.receiver.nil?
+        operator = name == "!" || Expressions::COMPARE.include?(name)
+        unsupported!(node, "&. with an operator") if operator && node.safe_navigation?
         return negate(expr(node.receiver), node) if name == "!" && args.empty?
-        return compare(expr(node.receiver), node, name, args.first) if Expressions::COMPARE.include?(name) && args.size == 1
+        return compare(node, name, args.first) if Expressions::COMPARE.include?(name) && args.size == 1
 
         receiver = expr(node.receiver)
         unsupported!(node, "a call chained after &.") if receiver.extra[:nav]

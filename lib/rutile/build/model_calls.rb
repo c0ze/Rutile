@@ -25,8 +25,9 @@ module Rutile
         record_method(receiver, node, model, name, args)
       end
 
-      def write_attribute(receiver, attribute, type, arg, node)
-        value = expr(arg)
+      def write_attribute(receiver, attribute, type, arg, node) = write_value(receiver, attribute, type, expr(arg), node)
+
+      def write_value(receiver, attribute, type, value, node)
         unless [type, T.nilable(type), T::NIL].include?(value.type)
           unsupported!(node, "assigning #{describe(value.type)} to #{attribute}")
         end
@@ -131,15 +132,15 @@ module Rutile
         end
       end
 
-      def where(model, column, value, node)
-        if value.is_a?(Prism::RangeNode)
-          unsupported!(node, "a where range other than `x..`") unless value.left && value.right.nil? && !value.exclude_end?
-          bound = expr(value.left)
+      def where(model, column, operand, node)
+        if operand.is_a?(Prism::RangeNode)
+          unsupported!(node, "a where range other than `x..`") unless operand.left && operand.right.nil? && !operand.exclude_end?
+          bound = value(operand.left)
           unsupported!(node, "a where range from a value that may be nil") if bound.type.nilable?
           return ".where_gte(#{Names.str(column)}, #{owned(bound)})"
         end
         unsupported!(node, "where on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
-        code = expr(value)
+        code = value(operand)
         if code.type == T::NIL
           @uses.rt("Value")
           return ".where_eq(#{Names.str(column)}, Value::Nil)"
@@ -165,7 +166,7 @@ module Rutile
         path = scope.dig("source", "path")
         trait = path == Scopes::APPLICATION_RECORD ? "ApplicationRecordScopes" : "#{model}Scopes"
         use_model(trait) unless trait == "#{@model}Scopes" && %i[model scope].include?(@env)
-        values = args.map { owned(expr(_1)) }
+        values = args.map { owned(value(_1)) }
         Code["#{receiver.rust}.#{name}(#{values.join(", ")})", T.relation(model), receiver.ctx, hint: receiver.hint]
       end
 
@@ -195,17 +196,17 @@ module Rutile
           Code["#{ctx_recv}.build(#{model}::from_attributes(&#{attributes.rust})?)", T.record(model), :write, hint:]
         when "find"
           need_ctx!(node)
-          id = settle([expr(only(args, node))], :write).first
+          id = settle([value(only(args, node))], :write).first
           Code["#{model}::find(#{ctx_mut}, #{owned(id)})?", T.record(model), :write, hint:]
         when "create", "create!"
           need_ctx!(node)
           create_record(model, only(args, node), name.end_with?("!"), node)
         when "find_by", "find_by!"
           need_ctx!(node)
-          column, value = only(pairs(args, node), node)
-          value = settle([expr(value)], :write).first
+          column, operand = only(pairs(args, node), node)
+          key = settle([value(operand)], :write).first
           type = name == "find_by" ? T.nilable(T.record(model)) : T.record(model)
-          Code["#{model}::#{Names.method(name)}(#{ctx_mut}, #{Names.str(column)}, #{owned(value)})?", type, :write, hint:]
+          Code["#{model}::#{Names.method(name)}(#{ctx_mut}, #{Names.str(column)}, #{owned(key)})?", type, :write, hint:]
         else
           table = @app.model(model)["table_name"]
           on_relation(Code["#{model}::all()", T.relation(model), hint: table], node, name, args)

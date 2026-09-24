@@ -48,6 +48,17 @@ module Rutile
         end
         T::UNIT
       end
+
+      # `return` in a callback or a filter; a value to return isn't compiled.
+      def early_return(node)
+        unsupported!(node, "return inside a block") if @block
+        unsupported!(node, "return with a value") if node.arguments
+        case @mode
+        when :unit then @lines << (@result ? "return Ok(());" : "return;")
+        when :filter then @lines << "return Ok(None);"
+        else unsupported!(node, "return here")
+        end
+      end
     end
   end
 end

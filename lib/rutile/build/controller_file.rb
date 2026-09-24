@@ -53,12 +53,18 @@ module Rutile
 
       # Unknown after a filter failed: the filter is already reported, and
       # whatever reads what it would have set is skipped.
-      def reader?(name) = readers.include?(name)
-
-      def readers
-        @readers ||= [@path, APPLICATION].flat_map do |path|
-          Declarations.calls(@app.source.tree(path), "attr_reader").flat_map { |call| call.arguments.arguments.map(&:unescaped) }
+      # Ruby's lookup order: this class's methods and readers, then
+      # ApplicationController's.
+      def reader?(name)
+        [@path, APPLICATION].each do |path|
+          return false if @app.source.defs(path).any? { _1.name.to_s == name }
+          return true if readers(path).include?(name)
         end
+        false
+      end
+
+      def readers(path)
+        Declarations.calls(@app.source.tree(path), "attr_reader").flat_map { |call| call.arguments.arguments.map(&:unescaped) }
       end
 
       def ivar_type(name) = @ivars[name] || (@filter_failed ? raise(Skipped, name) : nil)
