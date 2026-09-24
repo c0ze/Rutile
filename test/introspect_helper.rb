@@ -8,11 +8,14 @@ require_relative "../lib/rutile"
 # starts Postgres and prepares it first.
 module IntrospectHelper
   APP = File.expand_path("../examples/blog", __dir__)
+  # CI=1 turns on eager loading in the test env, which introspection refuses;
+  # exported connection URLs would take the app off the example cluster.
+  CLEAN_ENV = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
 
   def self.manifest_text
     @manifest_text ||= begin
       out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
-      Rutile::Introspect.run(app_dir: APP, env: "test", out: out)
+      Rutile::Introspect.run(app_dir: APP, env: "test", out: out, vars: CLEAN_ENV)
       File.read(out)
     end
   end

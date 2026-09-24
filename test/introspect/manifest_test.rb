@@ -27,7 +27,8 @@ class ManifestTest < Minitest::Test
 
   def test_cli_writes_the_same_manifest
     out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
-    stdout, stderr, status = Open3.capture3("ruby", EXE, "introspect", IntrospectHelper::APP, "--env", "test", "--out", out)
+    stdout, stderr, status = Open3.capture3(IntrospectHelper::CLEAN_ENV, "ruby", EXE, "introspect", IntrospectHelper::APP,
+                                            "--env", "test", "--out", out)
     assert status.success?, stderr
     assert_equal "wrote #{out}\n", stdout
     assert_equal IntrospectHelper.manifest_text, File.read(out)

@@ -5,6 +5,9 @@ require_relative "../lib/rutile/unbundled"
 PG_DIR = File.expand_path("../tmp/pg", __dir__)
 PG_PORT = ENV.fetch("BLOG_DB_PORT", "54329")
 EXAMPLE_APP = File.expand_path("../examples/blog", __dir__)
+# Connection URLs exported for another project would override database.yml
+# and point db:prepare and fixture loading at that project's database.
+EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
 
 def pg_running?
   system("pg_ctl", "-D", PG_DIR, "status", out: File::NULL, err: File::NULL)
@@ -32,12 +35,12 @@ namespace :example do
   desc "Create and migrate the example app's test database"
   task db: "pg:start" do
     Dir.chdir(EXAMPLE_APP) do
-      Rutile.unbundled { sh({ "RAILS_ENV" => "test" }, "bin/rails", "db:prepare") }
+      Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "db:prepare") }
     end
   end
 
   desc "Run the example app's own test suite"
   task test: :db do
-    Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { sh "bin/rails", "test" } }
+    Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "test") } }
   end
 end

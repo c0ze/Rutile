@@ -115,7 +115,7 @@ class ModelsTest < Minitest::Test
   def test_eager_loaded_app_is_refused
     out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
     error = assert_raises(Rutile::Introspect::Error) do
-      Rutile::Introspect.run(app_dir: IntrospectHelper::APP, env: "test", out: out, vars: { "CI" => "1" })
+      Rutile::Introspect.run(app_dir: IntrospectHelper::APP, env: "test", out: out, vars: IntrospectHelper::CLEAN_ENV.merge("CI" => "1"))
     end
     assert_match(/loaded before introspection started/, error.message)
   end
