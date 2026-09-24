@@ -47,4 +47,19 @@ class ManifestTest < Minitest::Test
     assert_match(/boot failed: no database/, error.message)
     refute File.exist?(out)
   end
+
+  def test_long_boot_errors_keep_the_exception_line
+    app = Dir.mktmpdir("fake-app")
+    FileUtils.mkdir_p(File.join(app, "bin"))
+    script = "#!/bin/sh\necho 'config/database.yml: no such file (RuntimeError)' >&2\n" \
+             "for i in $(seq 1 60); do echo \"\tfrom gem.rb:$i\" >&2; done\nexit 1\n"
+    File.write(File.join(app, "bin/rails"), script)
+    File.chmod(0o755, File.join(app, "bin/rails"))
+
+    error = assert_raises(Rutile::Introspect::Error) do
+      Rutile::Introspect.run(app_dir: app, env: "test", out: File.join(app, "manifest.json"))
+    end
+    assert_match(/no such file \(RuntimeError\)/, error.message)
+    assert_match(/from gem\.rb:60/, error.message)
+  end
 end

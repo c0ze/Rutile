@@ -24,10 +24,19 @@ module Rutile
         Open3.capture3(child_env, rails, "runner", RUNNER, chdir: app_dir)
       end
       unless status.success? && File.exist?(out)
-        raise Error, "bin/rails runner failed in #{app_dir}:\n#{stderr.lines.last(20).join}"
+        raise Error, "bin/rails runner failed in #{app_dir}:\n#{excerpt(stderr)}"
       end
 
       out
+    end
+
+    # Ruby prints the exception first and the backtrace after it, so a long
+    # boot failure keeps both ends.
+    def excerpt(output, keep: 20)
+      lines = output.lines
+      return lines.join if lines.size <= keep * 2
+
+      (lines.first(keep) + ["...\n"] + lines.last(keep)).join
     end
   end
 end
