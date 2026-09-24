@@ -1,3 +1,4 @@
+require "fileutils"
 require_relative "introspect_helper"
 require_relative "../lib/rutile/build"
 
@@ -21,5 +22,14 @@ module BuildHelper
   # Emitters leave layout to rustfmt, so compare without whitespace.
   def assert_rust_includes(actual, expected)
     assert_includes actual.gsub(/\s+/, ""), expected.gsub(/\s+/, ""), "in:\n#{actual}"
+  end
+
+  # A scratch copy of the example app with `edits` (path => ->(ruby) { ... })
+  # applied, read with the example's manifest unless given another.
+  def scratch_app(edits, diagnostics: nil, manifest: IntrospectHelper.manifest)
+    root = Dir.mktmpdir
+    FileUtils.cp_r(%w[app config].map { File.join(IntrospectHelper::APP, _1) }, root)
+    edits.each { |path, change| File.write(File.join(root, path), change.(File.read(File.join(root, path)))) }
+    Rutile::Build::App.new(root, manifest, diagnostics:)
   end
 end

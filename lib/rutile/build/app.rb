@@ -7,11 +7,18 @@ module Rutile
 
       attr_reader :root, :manifest, :source
 
-      def initialize(root, manifest)
+      def initialize(root, manifest, diagnostics: nil)
         @root = root
         @manifest = manifest
+        @diagnostics = diagnostics
         @source = Source.new(root)
       end
+
+      attr_reader :diagnostics
+
+      # One unit of the build. With a collector, a failure is recorded and
+      # `fallback` returned; without one it propagates as always.
+      def attempt(fallback = nil, &block) = @diagnostics ? @diagnostics.attempt(fallback, &block) : yield
 
       def models = manifest.fetch("models")
       def model(name) = models.find { _1["name"] == name } || raise(Error, "no model #{name}")

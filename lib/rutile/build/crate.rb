@@ -20,14 +20,16 @@ module Rutile
         models = @app.models.map { ModelFile.new(@app, _1["name"]) }
         record = ApplicationRecordFile.new(@app)
         controllers = ControllerFile.all(@app)
-        files = models.to_h { ["src/models/#{_1.file_name}", _1.to_rust] }
-        files["src/models/application_record.rs"] = record.to_rust unless record.empty?
+        # In collect mode a file whose emitter fails outright is left out.
+        emit = ->(file) { @app.attempt { file.to_rust } }
+        files = models.to_h { ["src/models/#{_1.file_name}", emit.(_1)] }
+        files["src/models/application_record.rs"] = emit.(record) unless record.empty?
         files["src/models/mod.rs"] = models_mod(models, record)
-        controllers.each { files["src/controllers/#{_1.file_name}"] = _1.to_rust }
-        files["src/controllers/application.rs"] = ApplicationControllerFile.new(@app).to_rust
+        controllers.each { files["src/controllers/#{_1.file_name}"] = emit.(_1) }
+        files["src/controllers/application.rs"] = emit.(ApplicationControllerFile.new(@app))
         files["src/controllers/mod.rs"] = controllers_mod(controllers)
-        files["src/routes.rs"] = RoutesFile.new(@app).to_rust
-        files.merge("src/lib.rs" => lib_rs, "src/main.rs" => main_rs)
+        files["src/routes.rs"] = emit.(RoutesFile.new(@app))
+        files.merge("src/lib.rs" => lib_rs, "src/main.rs" => main_rs).compact
       end
 
       def write

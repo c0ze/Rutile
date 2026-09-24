@@ -21,6 +21,7 @@ module Rutile
   end
 end
 
+require_relative "build/diagnostics"
 require_relative "build/names"
 require_relative "build/types"
 require_relative "build/source"

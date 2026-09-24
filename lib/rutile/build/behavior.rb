@@ -35,11 +35,13 @@ module Rutile
 
       def validations
         (@model.dig("callbacks", "validate") || []).flat_map do |entry|
-          next validator(@model["validators"].fetch(entry["validator"])) if entry.key?("validator")
-          next [] if internal?(entry)
+          @app.attempt([]) do
+            next validator(@model["validators"].fetch(entry["validator"])) if entry.key?("validator")
+            next [] if internal?(entry)
 
-          app_method!(entry, "validate")
-          method_hook(entry, "validate")
+            app_method!(entry, "validate")
+            method_hook(entry, "validate")
+          end
         end
       end
 
@@ -104,19 +106,19 @@ module Rutile
       def callbacks
         dependents = @model["associations"].select { _1.dig("options", "dependent") }
         dependents.each do |assoc|
-          unsupported!("dependent: :#{assoc["options"]["dependent"]}") unless assoc["options"]["dependent"] == "destroy"
+          @app.attempt { unsupported!("dependent: :#{assoc["options"]["dependent"]}") unless assoc["options"]["dependent"] == "destroy" }
         end
         # Chains Behavior has no event for may only hold Rails' own entries.
         (@model["callbacks"].keys - EVENTS - ["validate"]).each do |event|
-          @model["callbacks"][event].each { refuse!(_1, "#{_1["kind"]}_#{event}") unless internal?(_1) }
+          @model["callbacks"][event].each { |entry| @app.attempt { refuse!(entry, "#{entry["kind"]}_#{event}") unless internal?(entry) } }
         end
         # Rails prepends after-callbacks, so they run in reverse chain order.
         lines = EVENTS.flat_map do |event|
           chain = @model.dig("callbacks", event) || []
           ordered = chain.reject { _1["kind"] == "after" } + chain.select { _1["kind"] == "after" }.reverse
-          ordered.flat_map { callback(event, _1, dependents) }
+          ordered.flat_map { |entry| @app.attempt([]) { callback(event, entry, dependents) } }
         end
-        unsupported!("a dependent: :destroy Rails didn't register") unless dependents.empty?
+        @app.attempt { unsupported!("a dependent: :destroy Rails didn't register") unless dependents.empty? }
         lines
       end
 

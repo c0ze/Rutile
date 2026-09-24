@@ -30,7 +30,9 @@ module Rutile
 
       def to_rust(scopes)
         @uses.rt("Relation")
-        items = scopes.map { _1["origin"] == "framework" ? enum_scope(_1["name"]) : lambda_scope(_1) }
+        items = scopes.filter_map do |scope|
+          @app.attempt { scope["origin"] == "framework" ? enum_scope(scope["name"]) : lambda_scope(scope) }
+        end
         "pub trait #{@trait} {\n#{items.map(&:first).join("\n")}\n}\n\n" \
           "impl#{@generics} #{@trait} for #{@target} {\n#{items.map(&:last).join("\n\n")}\n}"
       end

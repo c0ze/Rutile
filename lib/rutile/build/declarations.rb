@@ -15,13 +15,15 @@ module Rutile
         classes(app.source.tree(path)).each do |klass|
           statements = klass.body.is_a?(Prism::StatementsNode) ? klass.body.body : [klass.body].compact
           statements.each do |node|
-            next if node.is_a?(Prism::DefNode) || node.is_a?(Prism::ConstantWriteNode)
+            app.attempt do
+              next if node.is_a?(Prism::DefNode) || node.is_a?(Prism::ConstantWriteNode)
 
-            name = node.name.to_s if node.is_a?(Prism::CallNode) && node.receiver.nil?
-            next if name && (allowed + VISIBILITY).include?(name)
+              name = node.name.to_s if node.is_a?(Prism::CallNode) && node.receiver.nil?
+              next if name && (allowed + VISIBILITY).include?(name)
 
-            what = name || node.type.to_s.delete_suffix("_node").tr("_", " ")
-            raise Unsupported.at(path, node, "#{what} in a class body")
+              what = name || node.type.to_s.delete_suffix("_node").tr("_", " ")
+              raise Unsupported.at(path, node, "#{what} in a class body")
+            end
           end
         end
       end
