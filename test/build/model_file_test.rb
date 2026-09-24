@@ -79,7 +79,7 @@ class ModelFileTest < Minitest::Test
   def test_unsupported_association_options_fail_with_the_file
     broken = app_with { |m| m["models"].find { _1["name"] == "Post" }["associations"][1]["options"]["through"] = "tags" }
     error = assert_raises(Rutile::Build::Unsupported) { rust("Post", broken) }
-    assert_match %r{app/models/post.rb: has_many :comments with through}, error.message
+    assert_match %r{app/models/post.rb: has_many :comments through tags in this shape}, error.message
   end
 
   def test_unsupported_validators_fail_with_the_file

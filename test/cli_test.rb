@@ -40,7 +40,7 @@ class CliTest < Minitest::Test
     _out, err, status = Open3.capture3("ruby", EXE, "build", IntrospectHelper::APP, "--out", Dir.mktmpdir,
                                        "--runtime", "/unused", "--manifest", path)
     refute status.success?
-    assert_equal "rutile build: app/models/post.rb: has_many :comments with through isn't supported yet\n", err
+    assert_equal "rutile build: app/models/post.rb: has_many :comments through tags in this shape isn't supported yet\n", err
   end
 
   def test_check_prints_the_report_and_fails_on_problems

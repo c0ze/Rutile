@@ -75,13 +75,18 @@ class InheritedTest < Minitest::Test
     refute problems.any? { _1.include?("create!") }, problems.join("\n")
   end
 
-  # The model file refuses a has_many :through, so its callers must too;
-  # otherwise they'd compile against a constant that was never emitted.
+  # What the model file refuses (here a through association with a
+  # dependent:), its callers refuse too; otherwise they'd compile against a
+  # constant that was never emitted.
   def test_calls_through_a_refused_association_are_refused
-    translator = Rutile::Build::Translator.new(tracker, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "User",
-                                                                                                self_var: "user")
+    manifest = JSON.parse(JSON.generate(TrackerHelper.manifest))
+    user = manifest["models"].find { _1["name"] == "User" }
+    user["associations"].find { _1["name"] == "projects" }["options"]["dependent"] = "destroy"
+    app = Rutile::Build::App.new(TrackerHelper::APP, manifest)
+    translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "User",
+                                                                                             self_var: "user")
     error = assert_raises(Rutile::Build::Unsupported) { translator.body(Prism.parse("projects.to_a").value.statements, :unit) }
-    assert_equal "snippet.rb:1: has_many :projects with through isn't supported yet", error.message
+    assert_equal "snippet.rb:1: has_many :projects through memberships in this shape isn't supported yet", error.message
   end
 
   def tracker_scratch(edits) = scratch_app(edits, from: TrackerHelper::APP, manifest: TrackerHelper.manifest,
@@ -122,5 +127,34 @@ class InheritedTest < Minitest::Test
     app = scratch_app({ "app/models/user.rb" => ->(ruby) { ruby.sub("before_validation { self.email = email.to_s.strip.downcase }", "before_validation { return if email.nil? }") } })
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "User").to_rust }
     assert_equal "app/models/user.rb:5: return inside a block isn't supported yet", error.message
+  end
+
+  def test_through_associations_are_join_constants
+    user = Rutile::Build::ModelFile.new(tracker, "User").to_rust
+    assert_rust_includes user, 'pub const PROJECTS: HasManyThrough<User, Project> = HasManyThrough::new("projects", "memberships", "user_id", "project_id");'
+    project = Rutile::Build::ModelFile.new(tracker, "Project").to_rust
+    assert_rust_includes project, 'pub const MEMBERS: HasManyThrough<Project, User> = HasManyThrough::new("members", "memberships", "project_id", "user_id");'
+  end
+
+  # set_project: current_user.projects.find(params[:project_id])
+  def test_find_through_an_association
+    rust, problems = controller("TasksController")
+    assert_rust_includes rust, 'User::PROJECTS.of(&req.ctx, ' # then .find(&mut req.ctx, req.params.value("project_id"))?
+    assert_rust_includes rust, '.find(&mut req.ctx, req.params.value("project_id"))?'
+    refute problems.any? { _1.include?("through") }, problems.join("\n")
+  end
+
+  # errors.add(...) unless project.members.include?(assignee)
+  def test_include_through_an_association
+    rust = Rutile::Build::ModelFile.new(tracker, "Task").to_rust
+    assert_rust_includes rust, "Project::MEMBERS.of(ctx, project).contains(ctx, assignee)?"
+  end
+
+  def test_building_through_a_through_association_is_refused
+    translator = Rutile::Build::Translator.new(tracker, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "User", self_var: "user")
+    %w[projects.new(name:\ "x") projects.create!(name:\ "x") projects.includes(:owner)].each do |ruby|
+      error = assert_raises(Rutile::Build::Unsupported, ruby) { translator.body(Prism.parse(ruby).value.statements, :unit) }
+      assert_match(/through has_many :projects/, error.message)
+    end
   end
 end

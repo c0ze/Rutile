@@ -3,7 +3,20 @@ module Rutile
     # src/models/<model>.rs: the struct, its associations and enum
     # predicates, its methods, and its `Behavior`.
     class ModelFile
-      ASSOCIATION_OPTIONS = %w[dependent class_name foreign_key optional inverse_of].freeze
+      ASSOCIATION_OPTIONS = %w[dependent class_name foreign_key optional inverse_of through source].freeze
+
+      # has_many :through in the join-model shape: through a has_many on the
+      # owner, sourced from a belongs_to on the join model. [link, source],
+      # or nil for any other shape.
+      def self.through_parts(app, model, assoc)
+        options = assoc["options"]
+        link = app.association(model, options["through"])
+        return nil unless link && link["macro"] == "has_many" && !link["options"]["through"]
+        return nil unless (options.keys - %w[through source]).empty?
+
+        source = app.association(link["class_name"], options["source"] || assoc["name"].delete_suffix("s"))
+        source && source["macro"] == "belongs_to" ? [link, source] : nil
+      end
 
       def initialize(app, name)
         @app = app
@@ -119,6 +132,8 @@ module Rutile
       end
 
       def association(assoc)
+        return through_constant(assoc) if assoc["options"]["through"]
+
         extra = assoc["options"].keys - ASSOCIATION_OPTIONS
         unless extra.empty?
           raise Unsupported, "#{@path}: #{assoc["macro"]} :#{assoc["name"]} with #{extra.join(", ")} isn't supported yet"
@@ -140,6 +155,22 @@ module Rutile
         else
           raise Unsupported, "#{@path}: #{assoc["macro"]} :#{assoc["name"]} isn't supported yet"
         end
+      end
+
+      def through_constant(assoc)
+        link, source = ModelFile.through_parts(@app, @name, assoc)
+        unless link
+          raise Unsupported, "#{@path}: has_many :#{assoc["name"]} through #{assoc["options"]["through"]} in this shape " \
+                             "isn't supported yet"
+        end
+
+        @uses.rt("HasManyThrough")
+        target = assoc["class_name"]
+        @uses.model(target) unless target == @name
+        table = @app.model(link["class_name"])["table_name"]
+        "// has_many :#{assoc["name"]}, through: :#{link["name"]}\npub const #{Names.constant(assoc["name"])}: " \
+          "HasManyThrough<#{@name}, #{target}> = HasManyThrough::new(#{Names.str(assoc["name"])}, #{Names.str(table)}, " \
+          "#{Names.str(link["foreign_key"])}, #{Names.str(source["foreign_key"])});"
       end
 
       # has_many's automatic inverse: the target's belongs_to back to this

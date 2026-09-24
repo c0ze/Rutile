@@ -50,6 +50,13 @@ module Rutile
         end
         # The owner is named once: `build` uses it again.
         receiver = local!(receiver) if impure?(receiver) || receiver.reads?
+        if assoc["options"]["through"]
+          unless ModelFile.through_parts(@app, model, assoc)
+            unsupported!(node, "has_many :#{assoc["name"]} through #{assoc["options"]["through"]} in this shape")
+          end
+          return Code["#{const}.of(#{ctx_ref}, #{receiver.rust})", T.relation(target), :read, hint: assoc["name"],
+                      through: assoc["name"]]
+        end
         Code["#{const}.of(#{ctx_ref}, #{receiver.rust})", T.relation(target), :read, hint: assoc["name"],
              via: [receiver.rust, model, assoc["name"]]]
       end
@@ -113,6 +120,9 @@ module Rutile
 
       def on_relation(receiver, node, name, args)
         model = receiver.type.model
+        if (through = receiver.extra[:through]) && %w[new build create create! includes].include?(name)
+          unsupported!(node, "#{name} through has_many :#{through}")
+        end
         chain = ->(rust) { Code["#{receiver.rust}#{rust}", T.relation(model), receiver.ctx, hint: receiver.hint] }
         case name
         when "where"
@@ -128,6 +138,8 @@ module Rutile
           via = receiver.extra[:via] or return nil
           create_record(model, only(args, node), name.end_with?("!"), node, via:)
         when "as_json" then render_relation(receiver, model, args.first, node)
+        when "find" then find_in(receiver, model, args, node)
+        when "include?" then include_in(receiver, model, args, node)
         else scope_call(receiver, model, name, node, args)
         end
       end

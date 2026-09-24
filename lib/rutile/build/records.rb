@@ -81,6 +81,25 @@ module Rutile
         bang ? Code["#{ctx_recv}.save_bang(#{receiver.rust})?", T::UNIT, :write] : Code["#{ctx_recv}.save(#{receiver.rust})?", T::BOOL, :write]
       end
 
+      # `relation.find(id)`. The relation is an owned value, so it can be
+      # built before the Ctx is borrowed mutably.
+      def find_in(receiver, model, args, node)
+        need_ctx!(node)
+        id = settle([value(only(args, node))], :write).first
+        Code["#{receiver.rust}.find(#{ctx_mut}, #{owned(id)})?", T.record(model), :write, hint: Names.snake(model)]
+      end
+
+      # `relation.include?(record)`: an exists? query, as on an unloaded
+      # relation in Rails; nil is false.
+      def include_in(receiver, model, args, node)
+        need_ctx!(node)
+        record = settle([value(only(args, node))], :write).first
+        unless [T.record(model), T.nilable(T.record(model))].include?(record.type)
+          unsupported!(node, "include? with #{describe(record.type)}")
+        end
+        Code["#{receiver.rust}.contains(#{ctx_mut}, #{record.rust})?", T::BOOL, :write]
+      end
+
       # `where.not(status: :done)`
       def on_where_chain(receiver, node, name, args)
         return nil unless name == "not"
