@@ -1,5 +1,6 @@
 require "minitest/autorun"
 require "open3"
+require "tmpdir"
 require_relative "../lib/rutile"
 
 class CliTest < Minitest::Test
@@ -15,5 +16,12 @@ class CliTest < Minitest::Test
     _out, err, status = Open3.capture3("ruby", EXE, "build")
     refute status.success?
     assert_match(/usage: rutile/, err)
+  end
+
+  def test_introspect_without_bin_rails_fails_cleanly
+    dir = Dir.mktmpdir("not-an-app")
+    _out, err, status = Open3.capture3("ruby", EXE, "introspect", dir)
+    refute status.success?
+    assert_equal "rutile introspect: no bin/rails in #{dir}\n", err
   end
 end

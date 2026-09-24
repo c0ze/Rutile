@@ -1,0 +1,9 @@
+# Loaded by `bin/rails runner` inside the target app (see Rutile::Introspect.run).
+# It may use only Ruby's standard library and Rails: the app's Gemfile doesn't
+# include Rutile, and nothing outside this directory is loaded here.
+require "json"
+require_relative "manifest"
+
+Rails.application.eager_load!
+manifest = Rutile::Introspect::Manifest.build(Rails.application)
+File.write(ENV.fetch("RUTILE_MANIFEST_OUT"), JSON.pretty_generate(manifest) + "\n")

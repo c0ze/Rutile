@@ -1,11 +1,4 @@
 #!/usr/bin/env ruby
 require_relative "../lib/rutile"
 
-case ARGV.first
-when "--version", "-v"
-  puts "rutile #{Rutile::VERSION}"
-else
-  warn "usage: rutile --version"
-  warn "check, introspect, build and verify are planned; see docs/design.md"
-  exit 1
-end
+exit Rutile::CLI.new(ARGV).run
