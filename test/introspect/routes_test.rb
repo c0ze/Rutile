@@ -10,7 +10,7 @@ class RoutesTest < Minitest::Test
   def test_resource_routes
     assert_equal(
       { "verb" => "GET", "path" => "/posts(.:format)", "controller" => "posts", "action" => "index",
-        "name" => "posts", "requirements" => {} },
+        "name" => "posts", "requirements" => {}, "request_constraints" => {}, "callable_constraints" => [] },
       route("GET", "/posts(.:format)")
     )
     assert_equal ["posts", "update", nil], route("PATCH", "/posts/:id(.:format)").values_at("controller", "action", "name")
@@ -28,5 +28,11 @@ class RoutesTest < Minitest::Test
   def test_health_check
     assert_equal ["rails/health", "show", "rails_health_check"],
                  route("GET", "/up(.:format)").values_at("controller", "action", "name")
+  end
+
+  def test_callable_constraints_are_recorded
+    lookup = route("GET", "/users/lookup(.:format)")
+    assert_equal [{ "proc" => { "path" => "config/routes.rb", "line" => 3 } }], lookup["callable_constraints"]
+    assert_equal({}, lookup["request_constraints"])
   end
 end

@@ -111,11 +111,20 @@ Scopes are recorded while models load, so introspection refuses to run on an app
 
 ## `routes`
 
-In match order (the order Rails tries them). `name` is set only on the first route for a path, as in `bin/rails routes`. `requirements` holds constraints such as `{"id": {"regexp": "\\d+", "options": 0}}`.
+In match order (the order Rails tries them). `name` is set only on the first route for a path, as in `bin/rails routes`.
+
+Three kinds of constraint, all of which decide whether the route matches:
+
+- `requirements`: path segment formats, such as `{"id": {"regexp": "\\d+", "options": 0}}`
+- `request_constraints`: conditions on the request, such as `{"subdomain": "api"}` or an `ip:` regexp
+- `callable_constraints`: lambdas and objects passed to `constraints`, as `{"proc": <location>}` or `{"object": "AdminConstraint"}`
+
+When a constraint fails, Rails moves on to the next route rather than returning 404. In the example app, `GET /users/lookup` without an `email` falls through to `users#show` with `id: "lookup"`.
 
 ```json
-{"verb": "GET", "path": "/posts(.:format)", "controller": "posts", "action": "index",
- "name": "posts", "requirements": {}}
+{"verb": "GET", "path": "/users/lookup(.:format)", "controller": "users", "action": "lookup",
+ "name": "lookup_users", "requirements": {}, "request_constraints": {},
+ "callable_constraints": [{"proc": {"path": "config/routes.rb", "line": 3}}]}
 ```
 
 ## `controllers`
