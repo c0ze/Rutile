@@ -10,12 +10,12 @@ bundle exec rake example:benchmark
 
 | Endpoint | Server | req/s | p50 | p99 | RSS |
 |---|---|---:|---:|---:|---:|
-| `GET /posts` | Rails | 365 | 27.26 ms | 30.23 ms | 101 MiB |
-| `GET /posts` | Rust | 9,076 | 1.07 ms | 1.47 ms | 9 MiB |
-| `GET /posts/:id` | Rails | 1,167 | 8.52 ms | 9.96 ms | 103 MiB |
-| `GET /posts/:id` | Rust | 21,552 | 0.45 ms | 0.64 ms | 9 MiB |
+| `GET /posts` | Rails | 363 | 27.23 ms | 31.26 ms | 101 MiB |
+| `GET /posts` | Rust | 9,726 | 1.00 ms | 1.38 ms | 8 MiB |
+| `GET /posts/:id` | Rails | 1,167 | 8.40 ms | 10.44 ms | 102 MiB |
+| `GET /posts/:id` | Rust | 24,924 | 0.39 ms | 0.56 ms | 9 MiB |
 
-That is 25 times the throughput on the index and 18 times on `show`, in about a tenth of the memory.
+That is 27 times the throughput on the index and 21 times on `show`, in under a tenth of the memory.
 
 `/posts` renders the 20 most recent visible posts with their authors (`includes(:user)`, two queries). `/posts/:id` renders one post.
 
@@ -34,4 +34,4 @@ Setup:
 - One Puma process is bound by the GVL, and its 5 threads mostly help while a request waits on Postgres. Puma in cluster mode, one process per core, would raise Rails' throughput and its memory together. Not measured.
 - Small tables on a local Postgres, with the load generator competing for the same CPU. Numbers on a real network and a real dataset will differ for both servers.
 
-The first run had the Rust index at 245 req/s, slower than Rails, with a flat 41 ms p50. tiny_http writes a response's headers and body separately and leaves Nagle's algorithm on, so the body sat in the kernel until the client's delayed ACK for the headers arrived. The server now sets `TCP_NODELAY` on its listening socket, and accepted connections inherit it.
+The first run had the Rust index at 245 req/s, slower than Rails, with a flat 41 ms p50. The server then ran on tiny_http, which writes a response's headers and body separately and leaves Nagle's algorithm on, so the body sat in the kernel until the client's delayed ACK for the headers arrived. RustOnRails now has its own HTTP/1.1 layer, which writes each response in one piece with `TCP_NODELAY` set.
