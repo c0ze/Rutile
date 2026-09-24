@@ -4,13 +4,14 @@ require_relative "tables"
 require_relative "models"
 require_relative "routes"
 require_relative "controllers"
+require_relative "gems"
 
 module Rutile
   module Introspect
     # Assembles the manifest. Every section comes out in a fixed order so two
     # runs over the same app produce byte-identical JSON.
     module Manifest
-      VERSION = 1
+      VERSION = 2
 
       module_function
 
@@ -23,7 +24,8 @@ module Rutile
           "tables" => Tables.extract,
           "models" => Models.extract,
           "routes" => Routes.extract(app),
-          "controllers" => Controllers.extract
+          "controllers" => Controllers.extract,
+          "gems" => Gems.extract
         }
       end
     end

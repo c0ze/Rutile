@@ -8,7 +8,7 @@ class ManifestTest < Minitest::Test
   EXE = File.expand_path("../../exe/rutile", __dir__)
 
   def test_header
-    assert_equal 1, manifest["manifest_version"]
+    assert_equal 2, manifest["manifest_version"]
     assert_equal "8.1.4", manifest["rails_version"]
     assert_equal RUBY_VERSION, manifest["ruby_version"]
   end
@@ -62,5 +62,15 @@ class ManifestTest < Minitest::Test
     end
     assert_match(/no such file \(RuntimeError\)/, error.message)
     assert_match(/from gem\.rb:60/, error.message)
+  end
+
+  def test_gems_are_the_gemfiles_direct_dependencies_with_groups
+    assert_equal [
+      { "name" => "debug", "groups" => %w[development test] },
+      { "name" => "pg", "groups" => %w[default] },
+      { "name" => "puma", "groups" => %w[default] },
+      { "name" => "rails", "groups" => %w[default] },
+      { "name" => "tzinfo-data", "groups" => %w[default] }
+    ], manifest["gems"]
   end
 end

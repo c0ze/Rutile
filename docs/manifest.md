@@ -16,9 +16,10 @@ Conventions:
 
 | Key | Meaning |
 |---|---|
-| `manifest_version` | format version, currently 1 |
+| `manifest_version` | format version, currently 2 |
 | `rails_version`, `ruby_version` | what the app booted with |
 | `config` | the settings below |
+| `gems` | the Gemfile's direct dependencies (below) |
 
 ## `config`
 
@@ -152,3 +153,11 @@ Every controller class defined under `app/`, sorted by name.
 ```
 
 `filters` uses the callback format above. `before_action only: [...]` shows up as `{"actions": [...]}` in `if`, and `except:` as the same in `unless`. `rescue_handlers` includes inherited ones, in the order Rails stores them (Rails checks them last to first). `param_wrapping` is `null` when wrapping is off.
+
+## `gems`
+
+The Gemfile's direct dependencies (not what they depend on), sorted by name, each with its Bundler groups. `rutile check` ignores gems that are only in `development` or `test`.
+
+```json
+{"name": "debug", "groups": ["development", "test"]}
+```
