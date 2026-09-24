@@ -45,3 +45,29 @@ Every table except Rails' own bookkeeping (`schema_migrations`, `ar_internal_met
 ```
 
 Columns keep database order. `type` is Active Record's type name; `default` is the database default as a string, `default_function` is set instead when the default is an expression such as `nextval(...)`.
+
+## `models`
+
+Every non-abstract Active Record model whose class is defined under `app/`, sorted by name.
+
+```json
+{
+  "name": "Post",
+  "table_name": "posts",
+  "source": {"path": "app/models/post.rb", "line": 1},
+  "attributes": {"id": "integer", "status": "integer", "title": "string", "...": "..."},
+  "associations": [
+    {"macro": "has_many", "name": "comments", "class_name": "Comment",
+     "foreign_key": "post_id", "options": {"dependent": "destroy"}}
+  ],
+  "validators": [
+    {"kind": "length", "class": "ActiveRecord::Validations::LengthValidator",
+     "attributes": ["title"], "options": {"maximum": 200}}
+  ],
+  "enums": {"status": {"draft": 0, "published": 1}}
+}
+```
+
+`attributes` maps every attribute Active Record knows to its type name, sorted, including ones declared with `attribute` that have no column. Enum attributes report their stored type (`integer`).
+
+Validators include the ones Rails adds for you: `belongs_to` adds a `presence` validator with `message: "required"` and a framework condition (`{"proc": null}`), and `enum ..., validate: true` adds an `inclusion` validator.

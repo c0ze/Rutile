@@ -23,6 +23,10 @@ module IntrospectHelper
 
   def manifest = IntrospectHelper.manifest
 
+  def model(name)
+    manifest.fetch("models").find { _1["name"] == name } || flunk("no model #{name}")
+  end
+
   def table(name)
     manifest.fetch("tables").find { _1["name"] == name } || flunk("no table #{name}")
   end
