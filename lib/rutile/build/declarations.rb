@@ -7,7 +7,7 @@ module Rutile
       VISIBILITY = %w[private protected public].freeze
       CALLBACKS = %w[validation save create update destroy].flat_map { ["before_#{_1}", "after_#{_1}"] }
       MODEL = (%w[belongs_to has_many validates validate enum scope primary_abstract_class] + CALLBACKS).freeze
-      CONTROLLER = %w[before_action skip_before_action rescue_from wrap_parameters].freeze
+      CONTROLLER = %w[before_action skip_before_action rescue_from wrap_parameters attr_reader].freeze
 
       module_function
 
@@ -25,6 +25,14 @@ module Rutile
               raise Unsupported.at(path, node, "#{what} in a class body")
             end
           end
+        end
+      end
+
+      # The class-body calls named `name` in `tree`: `attr_reader :current_user`.
+      def calls(tree, name)
+        classes(tree).flat_map do |klass|
+          statements = klass.body.is_a?(Prism::StatementsNode) ? klass.body.body : []
+          statements.select { _1.is_a?(Prism::CallNode) && _1.receiver.nil? && _1.name.to_s == name }
         end
       end
 

@@ -43,6 +43,7 @@ module Rutile
       QUERY = self[:query]
       JSON_OPT = self[:json_opt]
       TIME_CLASS = self[:time_class]
+      HEADERS = self[:headers]
     end
 
     # A translated expression: its Rust source, its type, and whether it

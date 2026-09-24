@@ -16,6 +16,7 @@ module Rutile
       include ModelCalls
       include Borrowing
       include WebCalls
+      include ControlFlow
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -48,6 +49,7 @@ module Rutile
       # statement is: :unit (dropped), :value (returned) or :response (an
       # action's render or head). Returns the lines and the returned type.
       def body(node, tail)
+        @mode = tail
         reserve(node) if node
         block(node ? node.body : [], tail)
       end
@@ -58,6 +60,7 @@ module Rutile
         saved = @lines
         locals = @locals.dup
         @lines = []
+        return [["Ok(None)"], T::UNIT] if statements.empty? && tail == :filter
         raise Unsupported, "#{@path}: a body or branch that returns nothing" if statements.empty? && tail != :unit
 
         type = T::UNIT
@@ -88,6 +91,7 @@ module Rutile
       end
 
       def tail_statement(node, tail)
+        return filter_tail(node) if tail == :filter
         return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
 
         code = expr(node)
@@ -101,17 +105,6 @@ module Rutile
         code.type
       end
 
-      def branch(node, tail)
-        raise Unsupported.at(@path, node, "elsif") if node.subsequent.is_a?(Prism::IfNode)
-
-        condition = truthy(expr(node.predicate), node.predicate)
-        then_lines, type = block(node.statements&.body || [], tail)
-        else_lines, else_type = block(node.subsequent.statements&.body || [], tail)
-        unsupported!(node, "an if whose branches return different types") unless else_type == type
-        @lines.push("if #{condition} {", *then_lines, "} else {", *else_lines, "}")
-        type
-      end
-
       def statement(node)
         case node
         when Prism::IfNode, Prism::UnlessNode then conditional(node)
@@ -120,24 +113,9 @@ module Rutile
         when Prism::CallOrWriteNode then or_assign(node)
         else
           code = expr(node)
-          unsupported!(node, "render or head anywhere but at the end of an action") if code.type == T::RESPONSE
+          unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
           @lines << "#{code.rust};"
         end
-      end
-
-      def conditional(node)
-        other = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
-        raise Unsupported.at(@path, node, "elsif") if other.is_a?(Prism::IfNode)
-
-        condition = truthy(expr(node.predicate), node.predicate)
-        condition = "!(#{condition})" if node.is_a?(Prism::UnlessNode)
-        then_lines, = block(node.statements&.body || [], :unit)
-        @lines.push("if #{condition} {", *then_lines)
-        if other
-          else_lines, = block(other.statements&.body || [], :unit)
-          @lines.push("} else {", *else_lines)
-        end
-        @lines << "}"
       end
 
       def assign_local(node)
@@ -205,9 +183,11 @@ module Rutile
         end
       end
 
-      def ivar(node)
+      def ivar(node) = ivar_named(node.name.to_s.delete_prefix("@"), node)
+
+      # `@current_user`, or `current_user` through an attr_reader.
+      def ivar_named(name, node)
         unsupported!(node, "instance variables here") unless @env == :controller
-        name = node.name.to_s.delete_prefix("@")
         type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
         Code["self.#{name}", T.nilable(type), hint: name]
       end

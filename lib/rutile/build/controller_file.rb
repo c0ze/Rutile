@@ -53,6 +53,14 @@ module Rutile
 
       # Unknown after a filter failed: the filter is already reported, and
       # whatever reads what it would have set is skipped.
+      def reader?(name) = readers.include?(name)
+
+      def readers
+        @readers ||= [@path, APPLICATION].flat_map do |path|
+          Declarations.calls(@app.source.tree(path), "attr_reader").flat_map { |call| call.arguments.arguments.map(&:unescaped) }
+        end
+      end
+
       def ivar_type(name) = @ivars[name] || (@filter_failed ? raise(Skipped, name) : nil)
 
       # A method of this controller that isn't an action, translated the
@@ -66,11 +74,12 @@ module Rutile
         end
         return nil if @controller["actions"].include?(name)
 
-        node = defs.find { _1.name.to_s == name } or return nil
+        found = definition(name) or return nil
+        node, path = found
         @helpers[name] = nil
-        @helpers[name] = @app.attempt({ failed: true }) { translate_helper(name, node, tail) }
+        @helpers[name] = @app.attempt({ failed: true }) { translate_helper(name, node, path, tail) }
         if @helpers[name][:failed]
-          @filter_failed = true if tail == :unit
+          @filter_failed = true if %i[unit filter].include?(tail)
           raise Skipped, name
         end
 
@@ -79,25 +88,36 @@ module Rutile
 
       private
 
-      def translate_helper(name, node, tail)
-        raise Unsupported.at(@path, node, "a controller method with parameters") if node.parameters
+      def translate_helper(name, node, path, tail)
+        raise Unsupported.at(path, node, "a controller method with parameters") if node.parameters
 
-        lines, type = translator.body(node.body, tail)
-        returned = { unit: "()", response: "Response" }.fetch(tail) do
-          raise Unsupported.at(@path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
+        lines, type = translator(path).body(node.body, tail)
+        returned = { unit: "()", response: "Response", filter: "Option<Response>" }.fetch(tail) do
+          raise Unsupported.at(path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 
           @uses.type(type)
           type.rust
         end
         lines << "Ok(())" if tail == :unit
-        rust = "// #{@path}:#{node.location.start_line}\n" \
+        rust = "// #{path}:#{node.location.start_line}\n" \
                "fn #{Names.method(name)}(&mut self, #{req(lines)}: &mut Request) -> Result<#{returned}> {\n#{lines.join("\n")}\n}"
-        { type: tail == :unit ? T::UNIT : type, rust: }
+        { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust: }
       end
 
       def defs = @app.source.defs(@path)
 
-      def translator = Translator.new(@app, @path, @uses, env: :controller, controller: self)
+      def translator(path = @path) = Translator.new(@app, path, @uses, env: :controller, controller: self)
+
+      # Private methods come from this file, then ApplicationController:
+      # Rust has no inheritance, so an inherited method is translated into
+      # every controller that uses it.
+      def definition(name)
+        [@path, APPLICATION].each do |path|
+          node = @app.source.defs(path).find { _1.name.to_s == name }
+          return [node, path] if node
+        end
+        nil
+      end
 
       def req(lines) = lines.join("\n").match?(/\breq\b/) ? "req" : "_req"
 
@@ -126,14 +146,29 @@ module Rutile
 
       def filter_line(filter)
         method = filter.dig("filter", "method")
+        path = filter.dig("filter", "source", "path")
         unsupported!("#{filter["kind"]}_action") unless filter["kind"] == "before"
-        unsupported!("a before_action that isn't a method of #{@name}") unless method && filter.dig("filter", "source", "path") == @path
+        unsupported!("a before_action that isn't a method") unless method
+        unsupported!("before_action :#{method} from #{path || "outside the app"}") unless [@path, APPLICATION].include?(path)
 
-        helper(method, nil, tail: :unit)
+        halts = renders?(definition(method)&.first)
+        helper(method, nil, tail: halts ? :filter : :unit)
         guards = filter["if"].map { guard(_1, "") } + filter["unless"].map { guard(_1, "!") }
-        comment = "// before_action :#{method}"
-        call = "self.#{Names.method(method)}(req)?;"
-        guards.empty? ? [comment, call] : [comment, "if #{guards.join(" && ")} {", call, "}"]
+        comment = "// before_action :#{method}#{" (#{path})" unless path == @path}"
+        call = if halts
+                 ["if let Some(response) = self.#{Names.method(method)}(req)? {", "return Ok(Some(response));", "}"]
+               else
+                 ["self.#{Names.method(method)}(req)?;"]
+               end
+        guards.empty? ? [comment, *call] : [comment, "if #{guards.join(" && ")} {", *call, "}"]
+      end
+
+      # Whether a method body renders or heads: then it's a filter that can halt.
+      def renders?(node)
+        return false unless node
+
+        node.is_a?(Prism::CallNode) && node.receiver.nil? && %i[render head].include?(node.name) ||
+          node.compact_child_nodes.any? { renders?(_1) }
       end
 
       # One `if:`/`unless:` entry: an action list. Rails requires them all.
@@ -224,6 +259,7 @@ module Rutile
       def ivar(name, _type, node) = raise(Unsupported.at(PATH, node, "@#{name} in ApplicationController"))
       def ivar_type(_name) = nil
       def helper(_name, _node) = nil
+      def reader?(_name) = false
 
       private
 

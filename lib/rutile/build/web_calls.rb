@@ -17,9 +17,12 @@ module Rutile
       def controller_call(node, name, args)
         case name
         when "params" then args.empty? ? Code["req.params", T::PARAMS] : nil
+        when "request" then args.empty? ? Code["req", T::REQUEST] : nil
         when "render" then render(node, args)
         when "head" then head(node, args)
         else
+          return ivar_named(name, node) if args.empty? && @controller.reader?(name)
+
           type = @controller.helper(name, node) or return nil
           unsupported!(node, "calling #{name} with arguments") unless args.empty?
           Code["self.#{Names.method(name)}(req)?", type, :write, hint: name.end_with?("_params") ? "attributes" : name]
@@ -163,7 +166,21 @@ module Rutile
       end
 
       def on_request(receiver, _node, name, args)
-        name == "query_parameters" && args.empty? ? Code["#{receiver.rust}.query", T::QUERY] : nil
+        return nil unless args.empty?
+
+        case name
+        when "query_parameters" then Code["#{receiver.rust}.query", T::QUERY]
+        when "headers" then Code[receiver.rust, T::HEADERS]
+        end
+      end
+
+      # `request.headers["X-Api-Token"]`. `header` borrows the whole request,
+      # so it's a Ctx read: bound before any `&mut req.ctx` call.
+      def on_headers(receiver, node, name, args)
+        key = only(args, node)
+        return nil unless name == "[]" && key.is_a?(Prism::StringNode)
+
+        Code["#{receiver.rust}.header(#{Names.str(key.unescaped)})", T.nilable(T::STR), :read, hint: "header"]
       end
 
       def on_query(receiver, node, name, args)

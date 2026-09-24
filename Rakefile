@@ -5,8 +5,8 @@ Rake::TestTask.new(:test) do |t|
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
-# The introspection tests boot examples/blog, which needs its database.
-task test: "example:blog_db"
+# The introspection and build tests boot both examples, which need their databases.
+task test: %w[example:blog_db example:tracker_db]
 
 # Each example's own suite, whatever EXAMPLE the shell has set.
 %w[blog tracker].each do |name|

@@ -47,6 +47,7 @@ namespace :example do
 
   # Rutile's own tests introspect the blog, whatever EXAMPLE says.
   task(blog_db: "pg:start") { prepare_database(File.expand_path("../examples/blog", __dir__)) }
+  task(tracker_db: "pg:start") { prepare_database(File.expand_path("../examples/tracker", __dir__)) }
 
   desc "Check the example app for anything rutile build can't compile"
   task check: :db do

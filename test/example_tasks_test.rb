@@ -18,7 +18,7 @@ class ExampleTasksTest < Minitest::Test
     out, err, status = Open3.capture3({ "EXAMPLE" => "tracker" }, "bundle", "exec", "rake", "-P", chdir: ROOT)
     assert status.success?, err
     prerequisites = out[/^rake test\n((?:    .*\n)*)/, 1].to_s.split.sort
-    assert_equal %w[example:blog_db], prerequisites
+    assert_equal %w[example:blog_db example:tracker_db], prerequisites
     default = out[/^rake default\n((?:    .*\n)*)/, 1].to_s.split
     assert_equal %w[test blog:test tracker:test], default
   end
