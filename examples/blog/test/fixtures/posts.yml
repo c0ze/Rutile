@@ -1,0 +1,22 @@
+published_old:
+  user: alice
+  title: Old news
+  body: First post
+  status: published
+  published_at: <%= 3.days.ago %>
+  created_at: <%= 3.days.ago %>
+  comments_count: 1
+
+published_new:
+  user: bob
+  title: Fresh news
+  body: Second post
+  status: published
+  published_at: <%= 1.day.ago %>
+  created_at: <%= 1.day.ago %>
+
+draft:
+  user: alice
+  title: Work in progress
+  body: Not yet
+  status: draft
