@@ -5,7 +5,12 @@ require_relative "support/servers"
 # PostgreSQL that mise.toml pins. It never touches a system server.
 PG_DIR = File.expand_path("../tmp/pg", __dir__)
 PG_PORT = ENV.fetch("BLOG_DB_PORT", "54329")
-EXAMPLE_APP = File.expand_path("../examples/blog", __dir__)
+# Which example app the tasks run on: EXAMPLE=tracker, blog by default.
+EXAMPLE = ENV.fetch("EXAMPLE", "blog")
+EXAMPLE_APP = File.expand_path("../examples/#{EXAMPLE}", __dir__)
+
+# Only the blog has a Rust crate in RustOnRails so far.
+def blog_only! = (abort "only the blog has a Rust crate (EXAMPLE=#{EXAMPLE})" unless EXAMPLE == "blog")
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
@@ -51,6 +56,7 @@ namespace :example do
 
   desc "Generate the example app's Rust crate into RustOnRails/examples/blog"
   task build: :db do
+    blog_only!
     require_relative "../lib/rutile"
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
@@ -61,6 +67,7 @@ namespace :example do
 
   desc "Run the example app's integration tests against the Rust port"
   task verify: :build do
+    blog_only!
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     port = ENV.fetch("VERIFY_PORT", "54400")
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog" }

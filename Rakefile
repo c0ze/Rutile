@@ -8,4 +8,9 @@ end
 # The introspection tests boot examples/blog, which needs its database.
 task test: "example:db"
 
-task default: %i[test example:test]
+namespace :tracker do
+  desc "Run the tracker example's own test suite"
+  task(:test) { sh({ "EXAMPLE" => "tracker" }, "bundle", "exec", "rake", "example:test") }
+end
+
+task default: %i[test example:test tracker:test]

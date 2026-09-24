@@ -1,0 +1,12 @@
+apollo:
+  name: Apollo
+  owner: alice
+
+hermes:
+  name: Hermes
+  owner: bob
+
+gemini:
+  name: Gemini
+  owner: alice
+  archived_at: 2026-01-01 00:00:00

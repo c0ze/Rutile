@@ -1,0 +1,19 @@
+alice_apollo:
+  user: alice
+  project: apollo
+  role: admin
+
+alice_gemini:
+  user: alice
+  project: gemini
+  role: admin
+
+bob_hermes:
+  user: bob
+  project: hermes
+  role: admin
+
+bob_apollo:
+  user: bob
+  project: apollo
+  role: member

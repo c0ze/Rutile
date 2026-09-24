@@ -1,0 +1,23 @@
+launch:
+  project: apollo
+  assignee: bob
+  title: Launch
+  status: todo
+  due_on: <%= 3.days.ago.to_date %>
+
+review:
+  project: apollo
+  title: Review
+  status: doing
+
+ship:
+  project: apollo
+  title: Ship
+  status: done
+  due_on: <%= 5.days.ago.to_date %>
+  completed_at: <%= 1.day.ago.to_fs(:db) %>
+
+secret:
+  project: hermes
+  title: Secret
+  status: todo

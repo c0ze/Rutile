@@ -1,0 +1,20 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: <%= ENV.fetch("TRACKER_DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("TRACKER_DB_PORT", 54329) %>
+  username: <%= ENV.fetch("TRACKER_DB_USER", "postgres") %>
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: tracker_development
+
+test:
+  <<: *default
+  database: tracker_test
+
+production:
+  <<: *default
+  database: tracker_production
+  password: <%= ENV["TRACKER_DATABASE_PASSWORD"] %>
