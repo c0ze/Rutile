@@ -17,8 +17,14 @@ module Rutile
         @scopes[model.name] << { "name" => name.to_s, "origin" => source ? "app" : "framework", "source" => source }
       end
 
+      # A model sees every scope declared on it or on an ancestor below
+      # ActiveRecord::Base (ApplicationRecord, an STI parent); the nearest
+      # declaration of a name wins.
       def self.scopes_for(model)
-        @scopes[model.name].sort_by { _1["name"] }
+        owners = model.ancestors.grep(Class).take_while { _1 != ActiveRecord::Base }.reverse
+        owners.each_with_object({}) do |owner, found|
+          @scopes.fetch(owner.name, []).each { found[_1["name"]] = _1 }
+        end.values.sort_by { _1["name"] }
       end
 
       module Hook

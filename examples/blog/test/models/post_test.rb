@@ -37,4 +37,10 @@ class PostTest < ActiveSupport::TestCase
   test "visible.recent lists published posts newest first" do
     assert_equal [posts(:published_new), posts(:published_old)], Post.visible.recent.to_a
   end
+
+  test "created_since, inherited from ApplicationRecord, filters by creation time" do
+    recent = Post.created_since(2.days.ago)
+    assert_includes recent, posts(:published_new)
+    assert_not_includes recent, posts(:published_old)
+  end
 end

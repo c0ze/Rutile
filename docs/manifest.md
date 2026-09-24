@@ -90,7 +90,7 @@ A filter is a method (`{"method", "origin", "source"}`), a block (`{"proc", "ori
 
 ### `scopes`
 
-Sorted by name. `origin: "framework"` marks scopes Rails generated, such as `published` and `not_published` from an enum.
+Sorted by name, and including scopes inherited from a parent class such as `ApplicationRecord` (their `source` points at the parent). A subclass scope with the same name replaces the inherited one. `origin: "framework"` marks scopes Rails generated, such as `published` and `not_published` from an enum.
 
 ```json
 {"name": "recent", "origin": "app", "source": {"path": "app/models/post.rb", "line": 9}}

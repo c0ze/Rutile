@@ -106,7 +106,7 @@ class ModelsTest < Minitest::Test
 
   def test_scopes_include_app_and_enum_scopes
     scopes = model("Post")["scopes"]
-    assert_equal %w[draft not_draft not_published published recent visible], scopes.map { _1["name"] }
+    assert_equal %w[created_since draft not_draft not_published published recent visible], scopes.map { _1["name"] }
     assert_equal({ "name" => "recent", "origin" => "app", "source" => { "path" => "app/models/post.rb", "line" => 9 } },
                  scopes.find { _1["name"] == "recent" })
     assert_equal "framework", scopes.find { _1["name"] == "draft" }["origin"]
@@ -118,5 +118,13 @@ class ModelsTest < Minitest::Test
       Rutile::Introspect.run(app_dir: IntrospectHelper::APP, env: "test", out: out, vars: IntrospectHelper::CLEAN_ENV.merge("CI" => "1"))
     end
     assert_match(/loaded before introspection started/, error.message)
+  end
+
+  def test_scopes_inherited_from_an_abstract_parent
+    expected = { "name" => "created_since", "origin" => "app",
+                 "source" => { "path" => "app/models/application_record.rb", "line" => 4 } }
+    %w[Comment Post User].each do |name|
+      assert_includes model(name)["scopes"], expected, "#{name} inherits created_since"
+    end
   end
 end

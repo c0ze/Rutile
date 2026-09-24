@@ -4,7 +4,7 @@
 require "json"
 require_relative "manifest"
 
-if Rutile::Introspect::Models.app_models.any?
+if ActiveRecord::Base.descendants.any? { Rutile::Introspect::Source.app_defined?(_1) }
   abort "rutile: app models were loaded before introspection started, so their scopes can't be recorded. " \
         "Run introspection with config.eager_load off (development, or test without CI set)."
 end
