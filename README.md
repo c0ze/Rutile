@@ -6,7 +6,7 @@ Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The sou
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
-**Status:** started 2026-09-25. `rutile introspect` and `rutile build` work on the PoC app, [examples/blog](examples/blog): the Rust crate in `RustOnRails/examples/blog` is generated (`bundle exec rake example:build`), passes the Rust tests written for the hand port it replaced, and passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`). The Rust side serves 16 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile check` lists everything `rutile build` would refuse, all at once, with files and lines; the example checks clean.
+**Status:** started 2026-09-25. `rutile introspect` and `rutile build` work on the PoC app, [examples/blog](examples/blog): the Rust crate in `RustOnRails/examples/blog` is generated (`bundle exec rake example:build`), passes the Rust tests written for the hand port it replaced, and passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`). The Rust side serves 16 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile check` lists everything `rutile build` would refuse, all at once, with files and lines; the blog checks clean. The next target is [examples/tracker](examples/tracker), an ordinary Rails 8 API (token auth, `has_many :through`, pagination, SQL scopes); [docs/gaps.md](docs/gaps.md) ranks what it needs.
 
 ## What it does
 

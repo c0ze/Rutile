@@ -127,6 +127,8 @@ A Rails 8 JSON API with users, posts and comments. In scope:
 
 Done when the app's request specs pass against both Puma and the binary under `rutile verify`, with a benchmark of both on the same machine.
 
+The blog met this on 2026-09-25: `rutile build` generates its crate, which passes the blog's integration tests under verify. The next milestone is [examples/tracker](../examples/tracker), written as an ordinary Rails 8 API rather than for Rutile; [gaps.md](gaps.md) is the ranked list of what compiling it takes.
+
 ## Open questions
 
 - HTML views. ERB would compile to string-building functions, but the helper surface (`link_to`, `form_with`, partials) is large. After the PoC.
