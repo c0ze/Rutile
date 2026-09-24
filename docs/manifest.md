@@ -97,3 +97,12 @@ Sorted by name. `origin: "framework"` marks scopes Rails generated, such as `pub
 ```
 
 Scopes are recorded while models load, so introspection refuses to run on an app that loaded its models during boot (`config.eager_load = true`, which the test environment turns on when `CI` is set). Use the development environment, or test without `CI`.
+
+## `routes`
+
+In match order (the order Rails tries them). `name` is set only on the first route for a path, as in `bin/rails routes`. `requirements` holds constraints such as `{"id": {"regexp": "\\d+", "options": 0}}`.
+
+```json
+{"verb": "GET", "path": "/posts(.:format)", "controller": "posts", "action": "index",
+ "name": "posts", "requirements": {}}
+```

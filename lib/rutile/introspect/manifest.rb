@@ -2,6 +2,7 @@ require_relative "source"
 require_relative "config"
 require_relative "tables"
 require_relative "models"
+require_relative "routes"
 
 module Rutile
   module Introspect
@@ -19,7 +20,8 @@ module Rutile
           "ruby_version" => RUBY_VERSION,
           "config" => Config.extract(app),
           "tables" => Tables.extract,
-          "models" => Models.extract
+          "models" => Models.extract,
+          "routes" => Routes.extract(app)
         }
       end
     end
