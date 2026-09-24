@@ -54,7 +54,13 @@ Output is a Cargo project under `tmp/rutile/` (path not final) with `rustonrails
 
 ### 4. Verify
 
-The app's own request specs run twice: against Puma, then against the binary on the same database fixtures. Responses are compared on status, headers that matter and body. A difference is a Rutile or RustOnRails bug unless the spec depends on something intentionally different (object ids, exception class names in messages). This is what makes the output trustworthy, so it gets built early.
+The app's own integration tests run against the binary. With `RUTILE_TARGET` set, the test helper installs `Rutile::Verify::Target` as the integration session's app: a Rack app that forwards each request to the Rust server and hands back its status, content type and body, so the tests' own assertions are the check. Fixtures and the Rust server share one database, which needs three adjustments:
+
+- Transactional tests are off, since the server can't see rows inside the test's open transaction.
+- The query cache is cleared after every forwarded request. The test process turns the cache on around each test, and without clearing it, `assert_difference` reads its stale count.
+- The target exposes `Rails.application.routes`, which is what gives the tests their `*_path` helpers.
+
+Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. This is what makes the output trustworthy, so it was built before codegen.
 
 ## Types
 

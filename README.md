@@ -6,7 +6,7 @@ Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The sou
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
-**Status:** design stage, started 2026-09-25. `rutile introspect` works (format in [docs/manifest.md](docs/manifest.md)); `check`, `build` and `verify` don't exist yet. The PoC target app is [examples/blog](examples/blog).
+**Status:** started 2026-09-25. `rutile introspect` works (format in [docs/manifest.md](docs/manifest.md)). The PoC app, [examples/blog](examples/blog), has a hand-written Rust port in RustOnRails that passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`) and serves 18 to 25 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile build`, which will generate that port, is next; `check` doesn't exist yet.
 
 ## What it will do
 
@@ -31,7 +31,7 @@ The planned commands, in the order you'd run them:
 1. `rutile check` parses the app with Prism and reports every construct outside the subset (`eval`, `method_missing`, `send` with a computed name, monkey patches, unsupported gems), each with a suggested rewrite.
 2. `rutile introspect` boots the app and dumps what Rails built at load time: schema, routes, associations, validations, callbacks, enums, scopes, controller filters. Rails resolves its own metaprogramming; Rutile reads the result.
 3. `rutile build` types the code and writes a Cargo project that depends on `rustonrails`. `cargo build --release` gives you the binary.
-4. `rutile verify` runs the app's request specs against Puma and against the binary and diffs the responses.
+4. `rutile verify` runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
 
 The full design is in [docs/design.md](docs/design.md).
 

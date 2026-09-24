@@ -18,3 +18,7 @@ production:
   <<: *default
   database: blog_production
   password: <%= ENV["BLOG_DATABASE_PASSWORD"] %>
+
+benchmark:
+  <<: *default
+  database: blog_test
