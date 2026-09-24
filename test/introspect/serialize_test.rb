@@ -22,8 +22,10 @@ class SerializeTest < Minitest::Test
     assert_equal({ "class" => "String" }, S.value(String))
   end
 
-  def test_infinite_floats_become_strings
-    assert_equal "Infinity", S.value(Float::INFINITY)
+  def test_nonfinite_floats_are_tagged
+    assert_equal({ "float" => "Infinity" }, S.value(Float::INFINITY))
+    assert_equal({ "float" => "-Infinity" }, S.value(-Float::INFINITY))
+    assert_equal({ "float" => "NaN" }, S.value(Float::NAN))
   end
 
   def test_unknown_objects_keep_their_class_name

@@ -7,7 +7,7 @@ module Rutile
 
       def value(v)
         case v
-        when Float then v.finite? ? v : v.to_s
+        when Float then v.finite? ? v : { "float" => v.to_s }
         when nil, true, false, Integer, String then v
         when Symbol then v.to_s
         when Array then v.map { value(_1) }
