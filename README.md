@@ -6,7 +6,7 @@ Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The sou
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
-**Status:** design stage, started 2026-09-25. Only the gem skeleton and `rutile --version` exist.
+**Status:** design stage, started 2026-09-25. `rutile introspect` works (format in [docs/manifest.md](docs/manifest.md)); `check`, `build` and `verify` don't exist yet. The PoC target app is [examples/blog](examples/blog).
 
 ## What it will do
 

@@ -106,3 +106,29 @@ In match order (the order Rails tries them). `name` is set only on the first rou
 {"verb": "GET", "path": "/posts(.:format)", "controller": "posts", "action": "index",
  "name": "posts", "requirements": {}}
 ```
+
+## `controllers`
+
+Every controller class defined under `app/`, sorted by name.
+
+```json
+{
+  "name": "PostsController",
+  "superclass": "ApplicationController",
+  "source": {"path": "app/controllers/posts_controller.rb", "line": 1},
+  "actions": ["create", "destroy", "index", "show", "update"],
+  "filters": [
+    {"kind": "before",
+     "filter": {"method": "set_post", "origin": "app", "source": {"path": "...", "line": 37}},
+     "if": [{"actions": ["destroy", "show", "update"]}], "unless": []}
+  ],
+  "rescue_handlers": [
+    {"exception": "ActiveRecord::RecordNotFound",
+     "handler": {"method": "not_found", "origin": "app", "source": {"path": "...", "line": 6}}}
+  ],
+  "param_wrapping": {"format": ["json"], "name": "post",
+                     "include": ["body", "title", "..."], "exclude": null}
+}
+```
+
+`filters` uses the callback format above. `before_action only: [...]` shows up as `{"actions": [...]}` in `if`, and `except:` as the same in `unless`. `rescue_handlers` includes inherited ones, in the order Rails stores them (Rails checks them last to first). `param_wrapping` is `null` when wrapping is off.

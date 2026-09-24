@@ -3,6 +3,7 @@ require_relative "config"
 require_relative "tables"
 require_relative "models"
 require_relative "routes"
+require_relative "controllers"
 
 module Rutile
   module Introspect
@@ -21,7 +22,8 @@ module Rutile
           "config" => Config.extract(app),
           "tables" => Tables.extract,
           "models" => Models.extract,
-          "routes" => Routes.extract(app)
+          "routes" => Routes.extract(app),
+          "controllers" => Controllers.extract
         }
       end
     end
