@@ -61,7 +61,7 @@ class ModelsTest < Minitest::Test
 
   def app_callbacks(name)
     model(name)["callbacks"].flat_map do |event, entries|
-      entries.select { _1["filter"]["origin"] == "app" }.map { [event, _1] }
+      entries.select { _1.dig("filter", "origin") == "app" }.map { [event, _1] }
     end
   end
 
@@ -90,7 +90,7 @@ class ModelsTest < Minitest::Test
   end
 
   def test_after_create_callback
-    assert_equal [["create", "after", "bump_post_counter"]],
+    assert_equal [["create", "after", "bump_post_counter"], ["validate", "before", "post_is_published"]],
                  app_callbacks("Comment").map { |event, entry| [event, entry["kind"], entry["filter"]["method"]] }
   end
 
@@ -99,9 +99,12 @@ class ModelsTest < Minitest::Test
     assert destroy.any? { _1["filter"]["origin"] == "framework" }, "dependent: :destroy adds a framework before_destroy"
   end
 
-  def test_validators_are_not_repeated_as_callbacks
-    validate = model("Post")["callbacks"].fetch("validate", [])
-    assert validate.none? { _1["filter"]["object"].to_s.end_with?("Validator") }
+  def test_validate_chain_keeps_validator_positions
+    comment = model("Comment")
+    chain = comment["callbacks"].fetch("validate").map { _1["validator"] || _1["filter"]["method"] }
+    # Active Record encryption adds its own validate callback ahead of the app's.
+    assert_equal ["cant_modify_encrypted_attributes_when_frozen", 0, 1, 2, 3, "post_is_published"], chain
+    assert_equal [["post"], ["user"], ["body"], ["body"]], comment["validators"].map { _1["attributes"] }
   end
 
   def test_scopes_include_app_and_enum_scopes

@@ -21,6 +21,7 @@ module Rutile
       end
 
       def describe(model)
+        validators = validators_in_order(model)
         {
           "name" => model.name,
           "table_name" => model.table_name,
@@ -28,9 +29,9 @@ module Rutile
           # Every attribute Active Record knows, including `attribute` declarations with no column.
           "attributes" => model.attribute_types.sort.to_h { |name, type| [name, type.type.to_s] },
           "associations" => model.reflect_on_all_associations.map { association(_1) },
-          "validators" => model.validators.map { validator(_1) },
+          "validators" => validators.map { validator(_1) },
           "enums" => model.defined_enums.sort.to_h { |name, mapping| [name, mapping.to_h] },
-          "callbacks" => callbacks(model),
+          "callbacks" => callbacks(model, validators),
           "scopes" => ScopeRecorder.scopes_for(model)
         }
       end
@@ -54,11 +55,20 @@ module Rutile
         }
       end
 
-      # Validators already appear under "validators"; Rails also registers
-      # each one as a validate callback, so those are skipped here.
-      def callbacks(model)
+      # Validators in the order they run: Rails registers each one as a
+      # validate callback, interleaved with `validate :method` calls.
+      def validators_in_order(model)
+        model.__callbacks.fetch(:validate, []).map(&:filter).grep(ActiveModel::Validator)
+      end
+
+      # A validator's slot in the validate chain points into "validators"
+      # instead of repeating it, so the chain keeps the real run order.
+      def callbacks(model, validators)
         model.__callbacks.sort.each_with_object({}) do |(event, chain), out|
-          entries = chain.reject { _1.filter.is_a?(ActiveModel::Validator) }.map { Callbacks.entry(_1, model) }
+          entries = chain.map do |callback|
+            index = validators.index(callback.filter) if callback.filter.is_a?(ActiveModel::Validator)
+            index ? { "kind" => callback.kind.to_s, "validator" => index } : Callbacks.entry(callback, model)
+          end
           out[event.to_s] = entries unless entries.empty?
         end
       end

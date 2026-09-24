@@ -13,4 +13,10 @@ class CommentTest < ActiveSupport::TestCase
       Comment.create!(post: post, user: users(:alice), body: "Agreed")
     end
   end
+
+  test "posts must be published before they take comments" do
+    comment = Comment.new(post: posts(:draft), user: users(:bob), body: "Early")
+    assert_not comment.valid?
+    assert_includes comment.errors[:post], "must be published"
+  end
 end

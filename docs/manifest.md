@@ -48,7 +48,7 @@ Columns keep database order. `type` is Active Record's type name; `default` is t
 
 ## `models`
 
-Every non-abstract Active Record model whose class is defined under `app/`, sorted by name.
+Every non-abstract Active Record model whose class is defined under `app/`, sorted by name. `validators` are listed in the order they run.
 
 ```json
 {
@@ -86,7 +86,18 @@ Keyed by event (`save`, `create`, `validation`, `destroy`, ...), each a list in 
 ]
 ```
 
-A filter is a method (`{"method", "origin", "source"}`), a block (`{"proc", "origin"}`) or an object (`{"object", "origin"}`). `origin` is `app` for code inside the app, `framework` for Rails or gems, `missing` for a method name nobody defines. Validator objects are left out here; they're listed under `validators`.
+A filter is a method (`{"method", "origin", "source"}`), a block (`{"proc", "origin"}`) or an object (`{"object", "origin"}`). `origin` is `app` for code inside the app, `framework` for Rails or gems, `missing` for a method name nobody defines.
+
+Validators run as `validate` callbacks, interleaved with `validate :method` calls, and the order changes which errors appear first. So the `validate` chain keeps a slot for each validator that points into the model's `validators` list, which is itself in run order:
+
+```json
+"validate": [
+  {"kind": "before", "filter": {"method": "cant_modify_encrypted_attributes_when_frozen", "origin": "framework", "source": null}, "if": [], "unless": []},
+  {"kind": "before", "validator": 0},
+  {"kind": "before", "validator": 1},
+  {"kind": "before", "filter": {"method": "post_is_published", "origin": "app", "source": {"path": "app/models/comment.rb", "line": 12}}, "if": [], "unless": []}
+]
+```
 
 ### `scopes`
 
