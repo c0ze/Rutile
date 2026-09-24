@@ -1,92 +1,78 @@
 # What the tracker needs
 
-[examples/tracker](../examples/tracker) is a project and task tracker written as an ordinary Rails 8 API: token auth in `ApplicationController`, `has_many :through`, several enums, numericality and scoped uniqueness, a `date` column, SQL-string scopes, member routes, pagination, `create!`/`update!` with `rescue_from RecordInvalid`. Its 16 integration tests pass on Rails (`bundle exec rake example:test EXAMPLE=tracker`). `rutile check` on it reports 28 problems ([tracker-check.txt](tracker-check.txt), 2026-09-25).
+[examples/tracker](../examples/tracker) is a project and task tracker written as an ordinary Rails 8 API: token auth in `ApplicationController`, `has_many :through`, several enums, numericality and scoped uniqueness, a `date` column, SQL-string scopes, member routes, pagination, `create!`/`update!` with `rescue_from RecordInvalid`. Its 24 integration tests pass on Rails (`bundle exec rake example:test EXAMPLE=tracker`).
 
-28 is a floor. Each unit (an action, a callback, a validator) reports only its first problem, and actions behind a filter that failed are skipped. The inherited `authenticate` filter fails in every controller, so most action bodies were never read. Each fix below will surface more findings until the tracker compiles.
+`rutile check` on it reports 18 problems ([tracker-check.txt](tracker-check.txt), after plan 8); it reported 28 before. The count is a floor. Each unit reports only its first problem, and actions behind a failed filter are skipped. Each fix below surfaces more findings until the tracker compiles.
+
+## Done
+
+Plan 8 (`docs/superpowers/plans/2026-09-25-tracker-gaps-1.md`):
+
+- ApplicationController's filters, private methods and `attr_reader`s now reach every controller. A filter that renders halts the chain, and `skip_before_action` follows the manifest's chain.
+- Everyday expressions: `nil`, `&&`, `||`, `!`, comparisons, the ternary, and `return` in callbacks and filters.
+- `create`/`create!`/`update`/`update!` take params-derived attributes or a literal hash.
+- `where.not`.
+- `request.headers[...]` (RustOnRails keeps request headers).
+- The report names inherited filters, and calls through an association the model file refuses are refused as well.
 
 ## Ranked
 
 Ranked by how common the construct is in Rails apps, then by how much of the tracker it unlocks. "Findings" counts lines in the report.
 
-### 1. ApplicationController as a real base class (8 findings)
+### 1. `has_many :through` (6 findings)
 
-- `before_action :authenticate` inherited by every controller (3: "a before_action that isn't a method of ...").
-- `attr_reader :current_user` (1) and the `current_user` calls it serves (4).
-- `skip_before_action :authenticate, only: :create` needs nothing new: the manifest already records each controller's resolved filter chain.
+- `User#projects`, and `Project#members` with `source:`.
+- The four callers that go through them: `current_user.projects` in both controllers' finders and in the projects index, and `project.members.include?` in Task's validation.
+- This blocks `set_project` and `set_task`, so most tracker actions are still unread.
+- RustOnRails: `HasManyThrough<M, T>` with a join query, `of`, `find`, `include?`, and preload. Rutile: a constant from the manifest's `through` and `source` (introspection records the options; the join keys come from the two associations it chains).
 
-Almost every Rails app has an auth filter and a `current_user`. Rutile: translate ApplicationController's filters and private methods into each subclass, since Rust has no inheritance and duplicating generated code is harmless. Treat `attr_reader` on an ivar as a helper that returns the field. RustOnRails: nothing. This fits the existing helper pattern, and it unblocks every action body in the tracker.
+### 2. Validators (3 findings)
 
-### 2. Everyday Ruby expressions (3 findings, many more hidden)
+- `numericality` (`only_integer`, `greater_than`, `allow_nil`), and `uniqueness: { scope: }` twice.
+- RustOnRails: `Check::Numericality { .. }`, a scope list on `Check::Uniqueness`, and `allow_nil`/`allow_blank` as guards. Rutile: the options map one to one. This fits the existing Check pattern.
 
-- `nil` (`where(archived_at: nil)`), `||` and `&&`, `!`, comparisons (`due_on < Date.current`), the ternary (`done? ? Time.current : nil`, reported as "if"), and `return if` guards.
-- Hidden behind other failures: arithmetic (`(page - 1) * PER_PAGE`), constants (`PER_PAGE`), `[a, b].max`, and `params.fetch(:page, 1).to_i`.
+### 3. Model macros (3 findings)
 
-Rutile: new node kinds in the translator. Each needs its truthiness and `Option` rules; `&&` and `||` return values, not booleans, when the operands aren't booleans. RustOnRails: nothing, apart from comparisons on `Option` values. This is new translator ground, but it's mechanical.
+- `has_secure_token :api_token`, which is 2 findings: the macro, and the `after_initialize` block it registers.
+- `normalizes :email, with: ...`.
+- RustOnRails: a token generator on create, and normalization applied on assignment (Behavior entries). Rutile: map them from the class body; the `with:` lambda is Ruby Rutile can translate.
 
-### 3. Creating and updating with attributes (2 findings, more hidden)
+### 4. The query API (2 findings, more hidden)
 
-- `User.create!(user_params)` and `memberships.create!(user: owner, role: :admin)`.
-- Hidden: `update!(archived_at: Time.current)` and `@project.update!(project_params)`.
-
-Rutile: `create`/`create!`/`update`/`update!` on classes, records and has_many relations. The argument is either params-derived `Attributes` or a literal hash, which becomes field assignments. RustOnRails: `ctx.create_bang`-style helpers taking attributes. This extends the existing `new`/`update`/`build` pattern.
-
-### 4. Model methods called from anywhere (hidden)
-
-`@project.archive!`, `task.overdue?` and `@task.done!` (an enum bang method) are called from controllers, so they aren't callbacks. The tracker's model methods take no arguments, so their return types can be inferred from their bodies. Methods with parameters need the design's rbs-inline signatures (Types, layer 3). Rutile: model methods become `impl Model { pub fn ... }` taking `&mut Ctx` and a handle. Enum bang methods come from the manifest. This is a new pattern, and the core of "keep the code Rubyish".
-
-### 5. More of the query API (3 findings, more hidden)
-
-- `where.not(status: :done)` (reported as "0 values where one belongs"). The runtime already has `where_not`.
-- A SQL fragment with binds: `where("title ILIKE ?", pattern)`. This needs `Relation::where_sql` in RustOnRails. The scope's parameter type then comes from the bind rather than a column.
 - `joins(project: :memberships).where(memberships: { user_id: ... })`, which needs join SQL from association metadata.
-- Hidden: `offset`, `find` on a relation (`current_user.projects.find(id)`), and `order(:due_on, :id)`.
+- A SQL fragment with binds: `where("title ILIKE ?", "%#{sanitize_sql_like(query)}%")`. This needs `Relation::where_sql` and string interpolation; the scope's parameter type comes from the bind.
+- Hidden: `find` on a relation, `include?`, `offset`, `limit` with a constant expression, and `order(:due_on, :id)`.
 
-### 6. Validators (3 findings)
+### 5. Model methods called from anywhere (hidden)
 
-- `numericality` (`only_integer`, `greater_than`, `allow_nil`) and `uniqueness: { scope: }` (2).
-- RustOnRails: `Check::Numericality { .. }`, a scope on `Check::Uniqueness`, and `allow_nil`/`allow_blank` as guards. Rutile: the options map one to one. This fits the existing Check pattern.
+`@project.archive!`, `task.overdue?` and `@task.done!` (an enum bang method) are called from controllers, so they aren't callbacks. The tracker's methods take no arguments, so their return types can be inferred from their bodies. Methods with arguments need the design's rbs-inline signatures (Types, layer 3). Rutile: model methods become `impl Model { pub fn ... }` taking `&mut Ctx` and a handle. Enum bang methods come from the manifest.
+
+### 6. Numbers, constants and small helpers (hidden)
+
+`(page - 1) * PER_PAGE`, the `PER_PAGE` constant, `[a, b].max`, and `params.fetch(:page, 1).to_i`. Ruby integers don't overflow; the design wants checked i64 arithmetic that fails loudly. Rutile: arithmetic on `INT`/`FLOAT` through checked helpers, and class constants as Rust `const`s.
 
 ### 7. `date` columns (1 finding)
 
 `due_on`. RustOnRails: a `Date` type (chrono `NaiveDate`) with `FromValue`, SQL and JSON (`"2026-09-25"`), and `Date.current`. Rutile: the column type and `Date.current`.
 
-### 8. `has_many :through` and `dependent: :nullify` (3 findings)
+### 8. Blocks and hashes over records (hidden)
 
-- `User#projects`, and `Project#members` with `source:`.
-- Hidden: `project.members.include?(assignee)`.
-- RustOnRails: `HasManyThrough` (a join query, preload and `include?`) and a nullify step for `dependent:`. Rutile: constants from the manifest's through and source.
+`tasks.map { |task| task.as_json.merge("overdue" => task.overdue?) }`. Rutile: `map` with a block over loaded records into a `Vec`, and JSON values built with `merge`.
 
-### 9. Dirty-tracking conditions (1 finding)
+### 9. Dirty tracking in conditions (1 finding)
 
-`before_save ..., if: :will_save_change_to_status?`. RustOnRails already has `attribute_changed`. Rutile: map `will_save_change_to_x?` and `saved_change_to_x?` to it in conditions and expressions.
+`before_save ..., if: :will_save_change_to_status?`. `will_save_change_to_x?` maps to RustOnRails' `attribute_changed`. `saved_change_to_x?` is different: it describes the last save, which the runtime doesn't track yet.
 
 ### 10. Rescue handlers that take the exception (1 finding)
 
 `def invalid(error) = render json: error.record.errors, ...`. RustOnRails: `Error::RecordInvalid` carries the record's `Errors`, not only messages. Rutile: a handler parameter typed as the exception.
 
-### 11. Blocks and hashes over records (hidden)
+### 11. `dependent: :nullify` (1 finding)
 
-`tasks.map { |task| task.as_json.merge("overdue" => task.overdue?) }`. Rutile: `map` with a block over loaded records into a `Vec`, and JSON values built with `merge`. This fits closures, but blocks are new to the translator.
-
-### 12. Model macros (3 findings)
-
-- `has_secure_token :api_token` (2 findings: the macro and the `after_initialize` block it registers).
-- `normalizes :email, with: ...`.
-- `dependent: :nullify` is counted under 8.
-- RustOnRails: a token generator on create, and normalization applied on assignment (Behavior entries). Rutile: map them from the class body, where the lambda is Ruby Rutile can translate.
-
-### 13. Request headers (hidden)
-
-`request.headers["X-Api-Token"]`. RustOnRails: `Request` keeps headers. Rutile: `request.headers[...]` as a string or nil.
+`User#assigned_tasks`. RustOnRails: a nullify step next to `destroy_all` (an `UPDATE ... SET fk = NULL`). Rutile: the Behavior entry, the same slot `dependent: :destroy` uses.
 
 ## Outside what the report can show
 
 - Verify: the proxy forwards only `Content-Type`, `Accept` and `Accept-Encoding`, so the tracker's `X-Api-Token` never reaches the Rust server. Forward every `HTTP_*` header the test sets.
 - RustOnRails needs an `examples/tracker` workspace member, and `build`/`verify`/`benchmark` need to accept `EXAMPLE=tracker`. Until then they refuse.
-- Runtime differences only verify can catch: JSON number and time formats for the new types, the order of error messages, and Postgres `ILIKE` against Rails' generated SQL.
-
-## The report itself
-
-- Inherited filters are reported without their name or line ("a before_action that isn't a method of ProjectsController"). Say `:authenticate (from ApplicationController)`.
-- `where.not` reads as "0 values where one belongs", and a ternary as "if".
-- "a after_initialize block" should be "an".
+- Runtime differences only verify can catch: JSON formats for the new types, the order of error messages, and Postgres `ILIKE` against Rails' generated SQL.

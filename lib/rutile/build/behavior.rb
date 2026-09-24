@@ -150,7 +150,7 @@ module Rutile
 
       def refuse!(entry, hook)
         filter = entry["filter"] || {}
-        name = filter["method"] ? "#{hook} :#{filter["method"]}" : "a #{hook} block"
+        name = filter["method"] ? "#{hook} :#{filter["method"]}" : "#{hook.match?(/\A[aeiou]/) ? "an" : "a"} #{hook} block"
         case filter["origin"]
         when "missing" then raise Unsupported, "#{@path}: #{name}, which nothing defines, can't be compiled"
         when "app" then unsupported!(name)

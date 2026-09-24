@@ -20,7 +20,7 @@ module Rutile
           return Code["#{ctx_recv}[#{receiver.rust}].#{Names.method(name)}()", T::BOOL, :read]
         end
         assoc = @app.association(model, name)
-        return association(receiver, model, assoc) if assoc && args.empty?
+        return association(receiver, model, assoc, node) if assoc && args.empty?
 
         record_method(receiver, node, model, name, args)
       end
@@ -35,7 +35,11 @@ module Rutile
         Code["#{ctx_recv}[#{receiver.rust}].#{attribute} = #{assigned}", T::UNIT, :write]
       end
 
-      def association(receiver, model, assoc)
+      def association(receiver, model, assoc, node)
+        # What the model file refuses to declare, callers can't use.
+        extra = assoc["options"].keys - ModelFile::ASSOCIATION_OPTIONS
+        unsupported!(node, "#{assoc["macro"]} :#{assoc["name"]} with #{extra.join(", ")}") unless extra.empty?
+        unsupported!(node, "#{assoc["macro"]} :#{assoc["name"]}") unless %w[belongs_to has_many].include?(assoc["macro"])
         const = "#{model}::#{Names.constant(assoc["name"])}"
         target = assoc["class_name"]
         use_model(target)

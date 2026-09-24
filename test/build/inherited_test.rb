@@ -72,4 +72,13 @@ class InheritedTest < Minitest::Test
     assert_rust_includes rust, "req.ctx.save_bang("
     refute problems.any? { _1.include?("create!") }, problems.join("\n")
   end
+
+  # The model file refuses a has_many :through, so its callers must too;
+  # otherwise they'd compile against a constant that was never emitted.
+  def test_calls_through_a_refused_association_are_refused
+    translator = Rutile::Build::Translator.new(tracker, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "User",
+                                                                                                self_var: "user")
+    error = assert_raises(Rutile::Build::Unsupported) { translator.body(Prism.parse("projects.to_a").value.statements, :unit) }
+    assert_equal "snippet.rb:1: has_many :projects with through isn't supported yet", error.message
+  end
 end
