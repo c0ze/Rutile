@@ -4,6 +4,12 @@
 require "json"
 require_relative "manifest"
 
+if Rutile::Introspect::Models.app_models.any?
+  abort "rutile: app models were loaded before introspection started, so their scopes can't be recorded. " \
+        "Run introspection with config.eager_load off (development, or test without CI set)."
+end
+
+Rutile::Introspect::ScopeRecorder.install!
 Rails.application.eager_load!
 manifest = Rutile::Introspect::Manifest.build(Rails.application)
 File.write(ENV.fetch("RUTILE_MANIFEST_OUT"), JSON.pretty_generate(manifest) + "\n")

@@ -71,3 +71,29 @@ Every non-abstract Active Record model whose class is defined under `app/`, sort
 `attributes` maps every attribute Active Record knows to its type name, sorted, including ones declared with `attribute` that have no column. Enum attributes report their stored type (`integer`).
 
 Validators include the ones Rails adds for you: `belongs_to` adds a `presence` validator with `message: "required"` and a framework condition (`{"proc": null}`), and `enum ..., validate: true` adds an `inclusion` validator.
+
+### `callbacks`
+
+Keyed by event (`save`, `create`, `validation`, `destroy`, ...), each a list in chain order. Framework callbacks stay in, because they are behavior the runtime must reproduce (autosave, `dependent: :destroy`).
+
+```json
+"save": [
+  {"kind": "before",
+   "filter": {"method": "stamp_published_at", "origin": "app",
+              "source": {"path": "app/models/post.rb", "line": 16}},
+   "if": [{"method": "published?", "origin": "framework", "source": null}],
+   "unless": []}
+]
+```
+
+A filter is a method (`{"method", "origin", "source"}`), a block (`{"proc", "origin"}`) or an object (`{"object", "origin"}`). `origin` is `app` for code inside the app, `framework` for Rails or gems, `missing` for a method name nobody defines. Validator objects are left out here; they're listed under `validators`.
+
+### `scopes`
+
+Sorted by name. `origin: "framework"` marks scopes Rails generated, such as `published` and `not_published` from an enum.
+
+```json
+{"name": "recent", "origin": "app", "source": {"path": "app/models/post.rb", "line": 9}}
+```
+
+Scopes are recorded while models load, so introspection refuses to run on an app that loaded its models during boot (`config.eager_load = true`, which the test environment turns on when `CI` is set). Use the development environment, or test without `CI`.

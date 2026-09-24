@@ -58,4 +58,65 @@ class ModelsTest < Minitest::Test
     status = model("Post")["validators"].find { _1["attributes"] == ["status"] }
     assert_equal ["inclusion", { "in" => %w[draft published] }], status.values_at("kind", "options")
   end
+
+  def app_callbacks(name)
+    model(name)["callbacks"].flat_map do |event, entries|
+      entries.select { _1["filter"]["origin"] == "app" }.map { [event, _1] }
+    end
+  end
+
+  def test_app_callbacks_keep_their_conditions
+    assert_equal(
+      [["save", {
+        "kind" => "before",
+        "filter" => { "method" => "stamp_published_at", "origin" => "app",
+                      "source" => { "path" => "app/models/post.rb", "line" => 16 } },
+        "if" => [{ "method" => "published?", "origin" => "framework", "source" => nil }],
+        "unless" => []
+      }]],
+      app_callbacks("Post")
+    )
+  end
+
+  def test_block_callbacks_point_at_their_source
+    assert_equal(
+      [["validation", {
+        "kind" => "before",
+        "filter" => { "proc" => { "path" => "app/models/user.rb", "line" => 5 }, "origin" => "app" },
+        "if" => [], "unless" => []
+      }]],
+      app_callbacks("User")
+    )
+  end
+
+  def test_after_create_callback
+    assert_equal [["create", "after", "bump_post_counter"]],
+                 app_callbacks("Comment").map { |event, entry| [event, entry["kind"], entry["filter"]["method"]] }
+  end
+
+  def test_framework_callbacks_are_kept_and_marked
+    destroy = model("Post")["callbacks"].fetch("destroy")
+    assert destroy.any? { _1["filter"]["origin"] == "framework" }, "dependent: :destroy adds a framework before_destroy"
+  end
+
+  def test_validators_are_not_repeated_as_callbacks
+    validate = model("Post")["callbacks"].fetch("validate", [])
+    assert validate.none? { _1["filter"]["object"].to_s.end_with?("Validator") }
+  end
+
+  def test_scopes_include_app_and_enum_scopes
+    scopes = model("Post")["scopes"]
+    assert_equal %w[draft not_draft not_published published recent visible], scopes.map { _1["name"] }
+    assert_equal({ "name" => "recent", "origin" => "app", "source" => { "path" => "app/models/post.rb", "line" => 9 } },
+                 scopes.find { _1["name"] == "recent" })
+    assert_equal "framework", scopes.find { _1["name"] == "draft" }["origin"]
+  end
+
+  def test_eager_loaded_app_is_refused
+    out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
+    error = assert_raises(Rutile::Introspect::Error) do
+      Rutile::Introspect.run(app_dir: IntrospectHelper::APP, env: "test", out: out, vars: { "CI" => "1" })
+    end
+    assert_match(/loaded before introspection started/, error.message)
+  end
 end
