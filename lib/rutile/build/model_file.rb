@@ -12,7 +12,11 @@ module Rutile
         @path = app.model_path(name)
         @uses = Uses.new
         @hooks = []
+        @exports = [name]
       end
+
+      # The names src/models/mod.rs re-exports.
+      attr_reader :exports
 
       def file_name = "#{Names.snake(@name)}.rs"
 
@@ -38,8 +42,12 @@ module Rutile
         "|#{ctx}, #{record}| {\n#{lines.join("\n")}\nOk(())\n}"
       end
 
-      # The model's scope trait.
-      def extras = [Scopes.for_model(@app, @uses, @name)]
+      # The model's scope trait, which mod.rs re-exports.
+      def extras
+        scopes = Scopes.for_model(@app, @uses, @name)
+        @exports << "#{@name}Scopes" if scopes
+        [scopes]
+      end
 
       private
 

@@ -1,3 +1,4 @@
+require "json"
 require "prism"
 require "set"
 
@@ -10,6 +11,12 @@ module Rutile
     # A construct outside the subset Rutile compiles.
     class Unsupported < Error
       def self.at(path, node, what) = new("#{path}:#{node.location.start_line}: #{what} isn't supported yet")
+    end
+
+    # Introspects the app (unless handed a manifest) and writes the crate.
+    def self.run(app_dir:, out:, runtime:, name: File.basename(app_dir), manifest: nil, env: "development", vars: {})
+      manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
+      Crate.new(App.new(app_dir, JSON.parse(File.read(manifest))), out, name:, runtime:).write
     end
   end
 end
@@ -26,3 +33,5 @@ require_relative "build/scopes_file"
 require_relative "build/behavior"
 require_relative "build/model_file"
 require_relative "build/controller_file"
+require_relative "build/routes_file"
+require_relative "build/crate"

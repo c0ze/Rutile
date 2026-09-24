@@ -2,6 +2,7 @@ require "minitest/autorun"
 require "open3"
 require "tmpdir"
 require_relative "../lib/rutile"
+require_relative "introspect_helper"
 
 class CliTest < Minitest::Test
   EXE = File.expand_path("../exe/rutile", __dir__)
@@ -13,7 +14,7 @@ class CliTest < Minitest::Test
   end
 
   def test_unknown_command_fails_with_usage
-    _out, err, status = Open3.capture3("ruby", EXE, "build")
+    _out, err, status = Open3.capture3("ruby", EXE, "frobnicate")
     refute status.success?
     assert_match(/usage: rutile/, err)
   end
@@ -23,5 +24,22 @@ class CliTest < Minitest::Test
     _out, err, status = Open3.capture3("ruby", EXE, "introspect", dir)
     refute status.success?
     assert_equal "rutile introspect: no bin/rails in #{dir}\n", err
+  end
+
+  def test_build_needs_out_and_runtime
+    _out, err, status = Open3.capture3({ "RUSTONRAILS_DIR" => nil }, "ruby", EXE, "build", Dir.mktmpdir)
+    refute status.success?
+    assert_match(/usage: rutile/, err)
+  end
+
+  def test_build_reports_unsupported_code
+    manifest = JSON.parse(IntrospectHelper.manifest_text)
+    manifest["models"].find { _1["name"] == "Post" }["associations"][1]["options"]["through"] = "tags"
+    path = File.join(Dir.mktmpdir, "manifest.json")
+    File.write(path, JSON.generate(manifest))
+    _out, err, status = Open3.capture3("ruby", EXE, "build", IntrospectHelper::APP, "--out", Dir.mktmpdir,
+                                       "--runtime", "/unused", "--manifest", path)
+    refute status.success?
+    assert_equal "rutile build: app/models/post.rb: has_many :comments with through isn't supported yet\n", err
   end
 end
