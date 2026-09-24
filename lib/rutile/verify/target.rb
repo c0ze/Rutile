@@ -11,9 +11,11 @@ module Rutile
       # `posts_path` from an app that answers `routes`.
       attr_reader :routes
 
-      def initialize(base_url, routes = nil)
+      # `after_request` runs once each response is back.
+      def initialize(base_url, routes = nil, &after_request)
         @uri = URI(base_url)
         @routes = routes
+        @after_request = after_request
       end
 
       def call(env)
@@ -23,6 +25,7 @@ module Rutile
         FORWARDED.each { |key, header| outgoing[header] = env[key] if env[key] }
         outgoing.body = body unless body.empty?
         response = Net::HTTP.start(@uri.host, @uri.port) { |http| http.request(outgoing) }
+        @after_request&.call
         headers = {}
         headers["content-type"] = response["content-type"] if response["content-type"]
         [response.code.to_i, headers, [response.body.to_s]]
@@ -31,9 +34,12 @@ module Rutile
       # Points integration tests at `base_url`. Fixtures are committed rather
       # than wrapped in a per-test transaction, because the other server reads
       # the database through its own connections; Rails then reloads them
-      # before every test.
+      # before every test. Each test runs inside the executor with the query
+      # cache on, and writes made by another process can't clear it, so every
+      # forwarded request clears it the way an in-process write would.
       def self.install(base_url)
-        ActionDispatch::IntegrationTest.app = new(base_url, Rails.application.routes)
+        target = new(base_url, Rails.application.routes) { ActiveRecord::Base.clear_query_caches_for_current_thread }
+        ActionDispatch::IntegrationTest.app = target
         ActiveSupport::TestCase.use_transactional_tests = false
       end
     end

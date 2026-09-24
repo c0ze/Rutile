@@ -42,4 +42,15 @@ class TargetTest < Minitest::Test
     assert_equal "application/json; charset=utf-8", headers["content-type"]
     assert_equal ["{}"], body
   end
+
+  # Rails clears the test's query cache when a request writes in-process;
+  # a request served elsewhere has to do it through this hook.
+  def test_runs_the_after_request_hook
+    server = RecordingServer.new("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+    calls = 0
+    target = Rutile::Verify::Target.new("http://127.0.0.1:#{server.port}") { calls += 1 }
+    target.call(Rack::MockRequest.env_for("/up"))
+    server.join
+    assert_equal 1, calls
+  end
 end
