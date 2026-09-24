@@ -1,0 +1,252 @@
+module Rutile
+  module Build
+    # Turns one Ruby body (a method, block or lambda) into Rust statements.
+    # Every expression becomes a `Code` with a static type. Anything that
+    # touches the `Ctx` is bound to a local before a call that borrows it
+    # mutably, in Ruby's left-to-right order, and nothing is evaluated twice.
+    class Translator
+      include ModelCalls
+      include Borrowing
+
+      # env: :model (a callback; `self` is a record), :scope (`self` is a
+      # relation), :controller (an action or helper), :constraint (a route
+      # lambda). `result` is false for functions that don't return Result.
+      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true)
+        @app = app
+        @path = path
+        @uses = uses
+        @env = env
+        @model = model
+        @self_var = self_var
+        @controller = controller
+        @result = result
+        @locals = {}
+        @writes = Hash.new(0)
+        @taken = Set.new(["ctx", "req", "self", self_var].compact)
+        @lines = []
+      end
+
+      # A parameter the body can read, spelled `rust` in Rust.
+      def declare(name, rust, type)
+        @locals[name] = Code[rust, type, local: true]
+        @taken << rust
+      end
+
+      # Translates a StatementsNode (or nil). `tail` says what the last
+      # statement is: :unit (dropped), :value (returned) or :response (an
+      # action's render or head). Returns the lines and the returned type.
+      def body(node, tail)
+        reserve(node) if node
+        block(node ? node.body : [], tail)
+      end
+
+      private
+
+      def block(statements, tail)
+        saved = @lines
+        @lines = []
+        raise Unsupported, "#{@path}: a body or branch that returns nothing" if statements.empty? && tail != :unit
+
+        type = T::UNIT
+        statements.each_with_index do |node, i|
+          i == statements.size - 1 && tail != :unit ? type = tail_statement(node, tail) : statement(node)
+        end
+        [@lines, type]
+      ensure
+        @lines = saved
+      end
+
+      # Ruby's locals and parameters, so temporaries never take their names,
+      # and how often each local is assigned, for `let mut`.
+      def reserve(node)
+        case node
+        when Prism::LocalVariableWriteNode
+          @writes[node.name.to_s] += 1
+          @taken << node.name.to_s
+        when Prism::RequiredParameterNode, Prism::LocalVariableTargetNode
+          @taken << node.name.to_s
+        end
+        node.compact_child_nodes.each { reserve(_1) }
+      end
+
+      def tail_statement(node, tail)
+        return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
+
+        code = expr(node)
+        if tail == :response
+          raise Unsupported.at(@path, node, "an action that doesn't end in render or head") unless code.type == T::RESPONSE
+
+          @lines << "Ok(#{code.rust})"
+        else
+          @lines << (@result ? "Ok(#{owned(code)})" : owned(code))
+        end
+        code.type
+      end
+
+      def branch(node, tail)
+        raise Unsupported.at(@path, node, "elsif") if node.subsequent.is_a?(Prism::IfNode)
+
+        condition = truthy(expr(node.predicate), node.predicate)
+        then_lines, type = block(node.statements&.body || [], tail)
+        else_lines, = block(node.subsequent.statements&.body || [], tail)
+        @lines.push("if #{condition} {", *then_lines, "} else {", *else_lines, "}")
+        type
+      end
+
+      def statement(node)
+        case node
+        when Prism::IfNode, Prism::UnlessNode then conditional(node)
+        when Prism::LocalVariableWriteNode then assign_local(node)
+        when Prism::InstanceVariableWriteNode then assign_ivar(node)
+        when Prism::CallOrWriteNode then or_assign(node)
+        else
+          code = expr(node)
+          unsupported!(node, "render or head before the end of an action") if code.type == T::RESPONSE
+          @lines << "#{code.rust};"
+        end
+      end
+
+      def conditional(node)
+        other = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
+        raise Unsupported.at(@path, node, "elsif") if other.is_a?(Prism::IfNode)
+
+        condition = truthy(expr(node.predicate), node.predicate)
+        condition = "!(#{condition})" if node.is_a?(Prism::UnlessNode)
+        then_lines, = block(node.statements&.body || [], :unit)
+        @lines.push("if #{condition} {", *then_lines)
+        if other
+          else_lines, = block(other.statements&.body || [], :unit)
+          @lines.push("} else {", *else_lines)
+        end
+        @lines << "}"
+      end
+
+      def assign_local(node)
+        name = node.name.to_s
+        code = expr(node.value)
+        if (known = @locals[name])
+          raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
+
+          @lines << "#{name} = #{owned(code)};"
+        else
+          @lines << "let #{"mut " if @writes[name] > 1}#{name} = #{owned(code)};"
+          @locals[name] = Code[name, code.type, local: true, literal: code.extra[:literal]]
+        end
+      end
+
+      # `@post = ...` sets the controller's field.
+      def assign_ivar(node)
+        raise Unsupported.at(@path, node, "instance variables here") unless @env == :controller
+
+        code = settle([expr(node.value)], :none).first
+        name = node.name.to_s.delete_prefix("@")
+        @controller.ivar(name, code.type, node)
+        @lines << "self.#{name} = #{code.type.nilable? ? owned(code) : "Some(#{owned(code)})"};"
+      end
+
+      # `self.published_at ||= Time.current` assigns only when nil (or false).
+      def or_assign(node)
+        unless @env == :model && node.receiver.is_a?(Prism::SelfNode)
+          raise Unsupported.at(@path, node, "||= on anything but an attribute of self")
+        end
+
+        attribute = node.read_name.to_s
+        type = @app.column_type(@model, attribute) or raise Unsupported.at(@path, node, "||= on #{attribute}")
+        field = "ctx[#{@self_var}].#{attribute}"
+        saved = @lines
+        @lines = []
+        value = settle([expr(node.value)], :write).first
+        assignment = [*@lines, "#{field} = Some(#{owned(value, type)});"]
+        @lines = saved
+        falsy = type == T::BOOL ? "!#{field}.unwrap_or(false)" : "#{field}.is_none()"
+        @lines.push("if #{falsy} {", *assignment, "}")
+      end
+
+      def expr(node)
+        case node
+        when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
+        when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
+        when Prism::IntegerNode then Code[node.value.to_s, T::INT]
+        when Prism::TrueNode then Code["true", T::BOOL]
+        when Prism::FalseNode then Code["false", T::BOOL]
+        when Prism::ParenthesesNode then expr(only(node.body&.body || [], node))
+        when Prism::LocalVariableReadNode then @locals[node.name.to_s] || unsupported!(node, "#{node.name} before it's assigned")
+        when Prism::InstanceVariableReadNode then ivar(node)
+        when Prism::SelfNode then self_code(node)
+        when Prism::ConstantReadNode then constant(node)
+        when Prism::HashNode then json_literal(node)
+        when Prism::CallNode then call(node)
+        else unsupported!(node, node.type.to_s.delete_suffix("_node").tr("_", " "))
+        end
+      end
+
+      def ivar(node)
+        unsupported!(node, "instance variables here") unless @env == :controller
+        name = node.name.to_s.delete_prefix("@")
+        type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
+        Code["self.#{name}", T.nilable(type), hint: name]
+      end
+
+      def self_code(node)
+        case @env
+        when :model then Code[@self_var, T.record(@model)]
+        when :scope then Code["self", T.relation(@model)]
+        else unsupported!(node, "self here")
+        end
+      end
+
+      def constant(node)
+        name = node.name.to_s
+        return Code["Time", T::TIME_CLASS] if name == "Time"
+
+        unsupported!(node, "the constant #{name}") unless @app.model?(name)
+        use_model(name)
+        Code[name, T.klass(name)]
+      end
+
+      def call(node)
+        args = node.arguments&.arguments || []
+        unsupported!(node, "a block passed to #{node.name}") if node.block
+        return self_call(node, node.name.to_s, args) if node.receiver.nil?
+
+        receiver = expr(node.receiver)
+        # Ruby evaluates the receiver before the arguments.
+        receiver = bind(receiver) if args.any? && impure?(receiver)
+        return safe_call(receiver, node, args) if node.safe_navigation?
+
+        send_to(receiver, node, node.name.to_s, args)
+      end
+
+      def self_call(node, name, args)
+        case @env
+        when :model then send_to(Code[@self_var, T.record(@model)], node, name, args)
+        when :scope then send_to(Code["self", T.relation(@model)], node, name, args)
+        when :controller then controller_call(node, name, args) || unsupported!(node, "#{name} in a controller")
+        else unsupported!(node, name)
+        end
+      end
+
+      def send_to(receiver, node, name, args)
+        handler = "on_#{receiver.type.kind}"
+        found = respond_to?(handler, true) ? send(handler, receiver, node, name, args) : nil
+        found || unsupported!(node, "#{name} on #{describe(receiver.type)}")
+      end
+
+      # `x&.m`: nil stays nil, otherwise `m` runs on the value.
+      def safe_call(receiver, node, args)
+        return send_to(receiver, node, node.name.to_s, args) unless receiver.type.nilable?
+
+        receiver = bind(receiver) if receiver.reads? || impure?(receiver)
+        var = @locals.key?(receiver.hint) || receiver.hint.nil? ? fresh("value") : receiver.hint
+        saved = @lines
+        @lines = []
+        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, node.name.to_s, args)
+        unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
+        unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
+        @lines = saved
+        Code["#{receiver.rust}.map(|#{var}| #{inner.rust})", T.nilable(inner.type), :read,
+             safe: [receiver.rust, var, inner.rust]]
+      end
+    end
+  end
+end

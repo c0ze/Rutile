@@ -88,4 +88,41 @@ class ModelFileTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { rust("Post", broken) }
     assert_match %r{app/models/post.rb: presence validator option allow_blank}, error.message
   end
+
+  def test_callback_methods_are_translated
+    assert_rust_includes rust("Comment"), <<~RUST
+      // app/models/comment.rb:12
+      fn post_is_published(ctx: &mut Ctx, comment: Handle<Comment>) -> Result<()> {
+          let post = Comment::POST.get(ctx, comment)?;
+          if post.is_some_and(|post| ctx[post].is_draft()) {
+              ctx.errors_mut(comment).add("post", "must be published");
+          }
+          Ok(())
+      }
+    RUST
+    assert_rust_includes rust("Post"), <<~RUST
+      // app/models/post.rb:16
+      fn stamp_published_at(ctx: &mut Ctx, post: Handle<Post>) -> Result<()> {
+          if ctx[post].published_at.is_none() {
+              ctx[post].published_at = Some(now());
+          }
+          Ok(())
+      }
+    RUST
+  end
+
+  def test_a_callback_block_is_a_closure
+    assert_rust_includes rust("User"), <<~RUST
+      // before_validation (app/models/user.rb:5)
+      .before_validation(|ctx, user| {
+          let email = ctx[user].email.clone().unwrap_or_default().strip().downcase();
+          ctx[user].email = Some(email);
+          Ok(())
+      })
+    RUST
+  end
+
+  def test_format_validation_keeps_the_ruby_regexp
+    assert_rust_includes rust("User"), %q{.validates("email", Check::Format(Regex::new(r"\A[a-zA-Z0-9.!\#$%&'*+/=?^_`{|}~-]+@}
+  end
 end

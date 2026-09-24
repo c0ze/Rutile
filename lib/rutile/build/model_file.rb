@@ -25,14 +25,21 @@ module Rutile
         [header, @uses.lines("super"), *body].reject(&:empty?).join("\n\n") + "\n"
       end
 
-      # More items after the Behavior; Task 3 adds the scope trait.
-      def extras = []
 
       # A method the Behavior chain names, to be translated into `impl`.
       def hook(method) = (@hooks << method unless @hooks.include?(method))
 
-      # A callback block as a closure; Task 3 translates it.
-      def closure(block) = raise(Unsupported.at(@path, block, "a callback block"))
+      # A callback block as a closure; it coerces to the `Hook` fn pointer.
+      def closure(block)
+        raise Unsupported.at(@path, block, "a callback block with parameters") if block.parameters
+
+        lines = translate(block.body)
+        ctx, record = parameter_names(lines)
+        "|#{ctx}, #{record}| {\n#{lines.join("\n")}\nOk(())\n}"
+      end
+
+      # The model's scope trait.
+      def extras = [Scopes.for_model(@app, @uses, @name)]
 
       private
 
@@ -126,8 +133,32 @@ module Rutile
         end
       end
 
-      # The translated methods the Behavior chain names; Task 3 fills this.
-      def methods = []
+      # The callback methods the Behavior chain names, one fn each.
+      def methods
+        @hooks.map do |name|
+          node = @app.source.def_node(@path, name)
+          raise Unsupported.at(@path, node, "a callback method with parameters") if node.parameters
+
+          lines = translate(node.body)
+          ctx, record = parameter_names(lines)
+          @uses.rt("Ctx", "Handle", "Result")
+          "// #{@path}:#{node.location.start_line}\n" \
+            "fn #{Names.method(name)}(#{ctx}: &mut Ctx, #{record}: Handle<#{@name}>) -> Result<()> {\n" \
+            "#{lines.join("\n")}\nOk(())\n}"
+        end
+      end
+
+      def translate(body)
+        Translator.new(@app, @path, @uses, env: :model, model: @name, self_var: var).body(body, :unit).first
+      end
+
+      def var = Names.snake(@name)
+
+      # `ctx` and the record, underscored when the body leaves them unused.
+      def parameter_names(lines)
+        text = lines.join("\n")
+        [text.match?(/\bctx\b/) ? "ctx" : "_ctx", text.match?(/\b#{var}\b/) ? var : "_#{var}"]
+      end
     end
   end
 end

@@ -1,0 +1,100 @@
+module Rutile
+  module Build
+    # The translator's bookkeeping: truthiness, binding values to locals so
+    # the borrow checker and Ruby's evaluation order are both satisfied, how
+    # the Ctx is spelled, and reading call arguments.
+    module Borrowing
+      private
+
+      def truthy(code, node)
+        type = code.type
+        return code.rust if type == T::BOOL
+        unsupported!(node, "a condition on #{describe(type)}") unless type.nilable?
+        return "#{code.rust}.is_some()" unless type.inner == T::BOOL
+
+        receiver, var, body = code.extra[:safe]
+        receiver ? "#{receiver}.is_some_and(|#{var}| #{body})" : "#{code.rust} == Some(true)"
+      end
+
+      # Binds `code` to a fresh local named after its hint.
+      def bind(code)
+        name = fresh(code.hint || "value")
+        @lines << "let #{name} = #{code.rust};"
+        Code[name, code.type, hint: code.hint, **code.extra.except(:literal, :local, :safe)]
+      end
+
+      def fresh(hint)
+        name = hint
+        n = 1
+        name = "#{hint}_#{n += 1}" while @taken.include?(name)
+        @taken << name
+        name
+      end
+
+      # Around a call that writes the Ctx, anything else touching it must be
+      # a local already; around one that reads it, anything writing it must.
+      # With no Ctx use of its own, a call still can't hold two writers.
+      def settle(codes, parent)
+        touching = codes.count(&:reads?)
+        codes.map do |code|
+          must = case parent
+                 when :write then code.reads?
+                 when :read then code.writes?
+                 else code.writes? && touching > 1
+                 end
+          must ? bind(code) : code
+        end
+      end
+
+      # Fallible (`?`) or writing: running it later, or twice, would differ.
+      def impure?(code) = code.writes? || code.rust.include?("?")
+
+      # A plain name already, or bound to one.
+      def local!(code) = code.rust.match?(/\A[a-z_][a-z0-9_]*\z/) ? code : bind(code)
+
+      # The value itself: a literal where a String is wanted, and a clone of
+      # a non-Copy local, which Ruby may read again.
+      def owned(code, want = nil)
+        return "#{code.rust}.to_string()" if code.extra[:literal] && want == T::STR
+        return "#{code.rust}.clone()" if code.extra[:local] && !code.extra[:literal] && !code.type.copy?
+
+        code.rust
+      end
+
+      # How the Ctx is spelled: receiver or index, mutable argument, shared argument.
+      def ctx_recv = @env == :model ? "ctx" : "req.ctx"
+      def ctx_mut = @env == :model ? "ctx" : "&mut req.ctx"
+      def ctx_ref = @env == :model ? "ctx" : "&req.ctx"
+
+      def need_ctx!(node) = (%i[model controller].include?(@env) || unsupported!(node, "database access here"))
+
+      # Models are imported, except the one whose file this is.
+      def use_model(name) = (@uses.model(name) unless %i[model scope].include?(@env) && name == @model)
+
+      def only(list, node) = list.size == 1 ? list.first : unsupported!(node, "#{list.size} values where one belongs")
+
+      def symbol!(node, at) = node.is_a?(Prism::SymbolNode) ? node.unescaped : unsupported!(at, "a non-symbol argument")
+
+      # `key: value` pairs of a call's hash argument.
+      def pairs(args, node)
+        hash = only(args, node)
+        unsupported!(node, "a non-hash argument") unless hash.is_a?(Prism::KeywordHashNode) || hash.is_a?(Prism::HashNode)
+        hash.elements.map do |pair|
+          unsupported!(node, "a **splat or a non-symbol key") unless pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode)
+          [pair.key.unescaped, pair.value]
+        end
+      end
+
+      def describe(type)
+        case type.kind
+        when :record, :class then type.model
+        when :relation then "a relation of #{type.model}"
+        when :nilable then "#{describe(type.inner)} or nil"
+        else type.kind.to_s.tr("_", " ")
+        end
+      end
+
+      def unsupported!(node, what) = raise(Unsupported.at(@path, node, what))
+    end
+  end
+end
