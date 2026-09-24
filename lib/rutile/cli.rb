@@ -6,6 +6,7 @@ module Rutile
     USAGE = <<~TEXT
       usage: rutile --version
              rutile introspect [APP_DIR] [--env ENV] [--out FILE]
+             rutile check [APP_DIR] [--manifest FILE] [--env ENV]
              rutile build [APP_DIR] --out DIR --runtime PATH [--name NAME] [--manifest FILE] [--env ENV]
     TEXT
 
@@ -22,6 +23,8 @@ module Rutile
         0
       when "introspect"
         introspect
+      when "check"
+        check
       when "build"
         build
       else
@@ -46,6 +49,22 @@ module Rutile
       usage
     rescue Introspect::Error => e
       @err.puts "rutile introspect: #{e.message}"
+      1
+    end
+
+    def check
+      options = { env: "development" }
+      OptionParser.new do |parser|
+        %w[manifest env].each { |key| parser.on("--#{key} VALUE") { options[key.to_sym] = _1 } }
+      end.parse!(@argv)
+      app_dir = File.expand_path(@argv.shift || ".")
+      diagnostics = Check.run(app_dir:, env: options[:env], manifest: options[:manifest] && File.expand_path(options[:manifest]))
+      @out.puts Check.report(diagnostics)
+      diagnostics.problems.empty? ? 0 : 1
+    rescue OptionParser::ParseError
+      usage
+    rescue Build::Error, Introspect::Error => e
+      @err.puts "rutile check: #{e.message}"
       1
     end
 

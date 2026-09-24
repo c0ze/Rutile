@@ -42,4 +42,15 @@ class CliTest < Minitest::Test
     refute status.success?
     assert_equal "rutile build: app/models/post.rb: has_many :comments with through isn't supported yet\n", err
   end
+
+  def test_check_prints_the_report_and_fails_on_problems
+    manifest = JSON.parse(IntrospectHelper.manifest_text)
+    manifest["gems"] << { "name" => "devise", "groups" => %w[default] }
+    path = File.join(Dir.mktmpdir, "manifest.json")
+    File.write(path, JSON.generate(manifest))
+    out, _err, status = Open3.capture3("ruby", EXE, "check", IntrospectHelper::APP, "--manifest", path)
+    refute status.success?
+    assert_equal "Gemfile: devise changes Rails at runtime and can't be compiled; use a Rails sidecar for what needs it, " \
+                 "or a rewrite\n1 problem\n", out
+  end
 end

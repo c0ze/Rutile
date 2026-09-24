@@ -40,6 +40,15 @@ namespace :example do
     end
   end
 
+  desc "Check the example app for anything rutile build can't compile"
+  task check: :db do
+    require_relative "../lib/rutile"
+    clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
+    diagnostics = Rutile::Check.run(app_dir: EXAMPLE_APP, env: "test", vars: clean)
+    puts Rutile::Check.report(diagnostics)
+    abort unless diagnostics.problems.empty?
+  end
+
   desc "Generate the example app's Rust crate into RustOnRails/examples/blog"
   task build: :db do
     require_relative "../lib/rutile"

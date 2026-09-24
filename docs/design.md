@@ -28,7 +28,15 @@ Prism parses every file under `app/` and `lib/`. A rule set rejects what can't c
 
 `send(:literal_symbol)` is allowed and compiles to a direct call. Metaprogramming that Rails itself does at boot (`has_many`, `validates`, `enum`, `scope`, `before_action`) is fine, because introspection resolves it.
 
-The same rules should also ship as a RuboCop plugin so editors flag problems while you type. That can come after the PoC.
+`rutile check` runs these rules over every `.rb` file under `app/` and `lib/`, and then does three more things in the same pass:
+
+- It runs the build with a collector attached, so every unit `rutile build` would refuse (a validator, a callback, a method, an action, a route, a class-level call) is reported and skipped instead of ending the run at the first one. A helper that can't compile is reported once; the actions calling it are skipped quietly.
+- It sorts the app's gems. Development and test gems are ignored, and so are the framework, the database driver, servers and deploy tools. Gems that change Rails at runtime (activeadmin, rails_admin, paper_trail, ransack, devise) are problems: use a Rails sidecar or a rewrite. Anything else is a note, since the build refuses any use of it the translator can't compile.
+- It notes app files outside `app/models`, `app/controllers` and `config/routes.rb`, which Rutile doesn't compile.
+
+Each finding is one line, `path:line: message`, sorted by file and line; notes come after problems, and a count ends the report. Problems make it exit 1; notes don't.
+
+The same rules should also ship as a RuboCop plugin so editors flag problems while you type. That can come later.
 
 ### 2. Introspect
 
