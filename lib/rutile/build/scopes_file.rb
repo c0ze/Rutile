@@ -57,12 +57,14 @@ module Rutile
         names = parameters(node, path)
         types = parameter_types(node, names, path)
         translator = Translator.new(@app, path, @uses, env: :scope, model: @model, result: false)
-        names.each { translator.declare(_1, _1, types.fetch(_1)) }
+        # A Ruby name that's a Rust keyword becomes a raw identifier.
+        rust = names.to_h { [_1, Translator::KEYWORDS.include?(_1) ? "r##{_1}" : _1] }
+        names.each { translator.declare(_1, rust[_1], types.fetch(_1)) }
         lines, type = translator.body(node.body, :value)
         raise Unsupported.at(path, node, "a scope that doesn't return a relation") unless type.kind == :relation
 
         @uses.rt("Time") if types.value?(T::TIME)
-        signature = "fn #{scope["name"]}(self#{names.map { ", #{_1}: #{types[_1].rust}" }.join})"
+        signature = "fn #{scope["name"]}(self#{names.map { ", #{rust[_1]}: #{types[_1].rust}" }.join})"
         ["#{signature} -> Self;", "// #{path}:#{line}\n#{signature} -> Self {\n#{lines.join("\n")}\n}"]
       end
 

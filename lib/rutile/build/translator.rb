@@ -51,6 +51,7 @@ module Rutile
 
       def block(statements, tail)
         saved = @lines
+        locals = @locals.dup
         @lines = []
         raise Unsupported, "#{@path}: a body or branch that returns nothing" if statements.empty? && tail != :unit
 
@@ -61,6 +62,8 @@ module Rutile
         [@lines, type]
       ensure
         @lines = saved
+        # A local first assigned in here doesn't exist after it in Rust.
+        @locals = locals
       end
 
       # Ruby's locals and parameters, so temporaries never take their names,
@@ -98,7 +101,8 @@ module Rutile
 
         condition = truthy(expr(node.predicate), node.predicate)
         then_lines, type = block(node.statements&.body || [], tail)
-        else_lines, = block(node.subsequent.statements&.body || [], tail)
+        else_lines, else_type = block(node.subsequent.statements&.body || [], tail)
+        unsupported!(node, "an if whose branches return different types") unless else_type == type
         @lines.push("if #{condition} {", *then_lines, "} else {", *else_lines, "}")
         type
       end
@@ -111,7 +115,7 @@ module Rutile
         when Prism::CallOrWriteNode then or_assign(node)
         else
           code = expr(node)
-          unsupported!(node, "render or head before the end of an action") if code.type == T::RESPONSE
+          unsupported!(node, "render or head anywhere but at the end of an action") if code.type == T::RESPONSE
           @lines << "#{code.rust};"
         end
       end
@@ -167,6 +171,10 @@ module Rutile
         saved = @lines
         @lines = []
         value = settle([expr(node.value)], :write).first
+        unless value.type == type
+          what = value.type.nilable? ? "a value that may be nil" : "#{describe(value.type)} on #{attribute}"
+          unsupported!(node, "||= with #{what}")
+        end
         assignment = [*@lines, "#{field} = Some(#{owned(value, type)});"]
         @lines = saved
         falsy = type == T::BOOL ? "!#{field}.unwrap_or(false)" : "#{field}.is_none()"

@@ -29,6 +29,8 @@ module Rutile
       def file_name = "#{Names.snake(@name.delete_suffix("Controller"))}.rs"
 
       def to_rust
+        raise Unsupported, "#{@path}: the namespaced controller #{@name} isn't supported yet" if @name.include?("::")
+
         Declarations.check(@app, @path, Declarations::CONTROLLER)
         @uses.rt("Controller", "Request", "Response", "Result")
         filters = filter_lines
@@ -119,20 +121,17 @@ module Rutile
         unsupported!("a before_action that isn't a method of #{@name}") unless method && filter.dig("filter", "source", "path") == @path
 
         helper(method, nil, tail: :unit)
-        only = actions_of(filter["if"])
-        except = actions_of(filter["unless"])
-        guards = [only && "matches!(action, #{only.map { Names.str(_1) }.join(" | ")})",
-                  except && "!matches!(action, #{except.map { Names.str(_1) }.join(" | ")})"].compact
-        comment = "// before_action :#{method}#{", only: #{only}" if only}#{", except: #{except}" if except}"
+        guards = filter["if"].map { guard(_1, "") } + filter["unless"].map { guard(_1, "!") }
+        comment = "// before_action :#{method}"
         call = "self.#{Names.method(method)}(req)?;"
         guards.empty? ? [comment, call] : [comment, "if #{guards.join(" && ")} {", call, "}"]
       end
 
-      def actions_of(conditions)
-        return nil if conditions.empty?
-        unsupported!("before_action conditions other than only: and except:") unless conditions.all? { _1.key?("actions") }
+      # One `if:`/`unless:` entry: an action list. Rails requires them all.
+      def guard(condition, negate)
+        unsupported!("before_action conditions other than only: and except:") unless condition.key?("actions")
 
-        conditions.flat_map { _1["actions"] }
+        "#{negate}matches!(action, #{condition["actions"].map { Names.str(_1) }.join(" | ")})"
       end
 
       def controller_impl(filters)

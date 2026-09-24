@@ -23,6 +23,8 @@ module Rutile
       # The Behavior chain is built first: it registers the hooks that the
       # inherent `impl` translates. The file reads struct, impl, Behavior.
       def to_rust
+        raise Unsupported, "#{@path}: the namespaced model #{@name} isn't supported yet" if @name.include?("::")
+
         Declarations.check(@app, @path, Declarations::MODEL)
         @app.attempt { storable! }
         behavior = model_impl

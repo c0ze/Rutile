@@ -29,4 +29,11 @@ class ScopesTest < Minitest::Test
     assert_rust_includes post, '// app/models/post.rb:10 fn visible(self) -> Self { self.where_eq("status", "published") }'
     assert_rust_includes post, 'fn not_draft(self) -> Self { self.where_not("status", "draft") }'
   end
+
+  # A Ruby name that's a Rust keyword becomes a raw identifier.
+  def test_a_scope_parameter_named_like_a_keyword
+    app = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("-> { where(status: :published) }", "->(type) { where(status: type) }") } })
+    assert_rust_includes Rutile::Build::ModelFile.new(app, "Post").to_rust,
+                         'fn visible(self, r#type: String) -> Self { self.where_eq("status", r#type.clone()) }'
+  end
 end

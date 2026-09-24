@@ -121,7 +121,9 @@ module Rutile
       def where(model, column, value, node)
         if value.is_a?(Prism::RangeNode)
           unsupported!(node, "a where range other than `x..`") unless value.left && value.right.nil? && !value.exclude_end?
-          return ".where_gte(#{Names.str(column)}, #{owned(expr(value.left))})"
+          bound = expr(value.left)
+          unsupported!(node, "a where range from a value that may be nil") if bound.type.nilable?
+          return ".where_gte(#{Names.str(column)}, #{owned(bound)})"
         end
         unsupported!(node, "where on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
         code = expr(value)
@@ -218,7 +220,7 @@ module Rutile
 
         message = settle([expr(args[1])], :write).first
         unsupported!(node, "an error message that isn't a string") unless message.type == T::STR
-        Code["#{ctx_recv}.errors_mut(#{owner}).add(#{Names.str(symbol!(args[0], node))}, #{message.rust})", T::UNIT, :write]
+        Code["#{ctx_recv}.errors_mut(#{owner}).add(#{Names.str(symbol!(args[0], node))}, #{owned(message)})", T::UNIT, :write]
       end
     end
   end

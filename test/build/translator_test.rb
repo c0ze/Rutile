@@ -92,4 +92,36 @@ class TranslatorTest < Minitest::Test
     assert_rust_includes rust, "if ctx[post].featured == Some(true) {"
     assert_rust_includes rust, "if ctx[post].featured != Some(true) {"
   end
+
+  # Only what `self.attr ||=` can hold: an attribute that stays nil would
+  # need `Some(None)`, which isn't a thing.
+  def test_or_assign_with_a_value_that_may_be_nil_is_refused
+    error = assert_raises(Rutile::Build::Unsupported) { callback("self.body ||= title") }
+    assert_equal "snippet.rb:1: ||= with a value that may be nil isn't supported yet", error.message
+  end
+
+  # In Ruby the local exists after the `if` (nil if the branch didn't run);
+  # a Rust `let` inside the branch doesn't.
+  def test_a_local_assigned_in_a_branch_and_read_after_is_refused
+    error = assert_raises(Rutile::Build::Unsupported) { callback("if title\n  t = title\nend\nself.body = t") }
+    assert_equal "snippet.rb:4: t before it's assigned isn't supported yet", error.message
+  end
+
+  def test_branches_of_different_types_are_refused
+    translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
+    error = assert_raises(Rutile::Build::Unsupported) do
+      translator.body(Prism.parse("if title\n  1\nelse\n  \"a\"\nend").value.statements, :value)
+    end
+    assert_equal "snippet.rb:1: an if whose branches return different types isn't supported yet", error.message
+  end
+
+  def test_an_error_message_from_a_local_is_cloned
+    assert_rust_includes callback("m = title.to_s\nerrors.add(:title, m)"), 'ctx.errors_mut(post).add("title", m.clone());'
+  end
+
+  # Rails treats `where(x: nil..)` as unbounded; a nil bound here would be IS NULL.
+  def test_a_where_range_from_a_value_that_may_be_nil_is_refused
+    error = assert_raises(Rutile::Build::Unsupported) { callback("Post.where(created_at: published_at..)") }
+    assert_equal "snippet.rb:1: a where range from a value that may be nil isn't supported yet", error.message
+  end
 end

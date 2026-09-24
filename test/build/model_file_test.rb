@@ -189,4 +189,19 @@ class ModelFileTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { rust("Post", stamped) }
     assert_equal "app/models/post.rb: the database default now() on created_at isn't supported yet", error.message
   end
+
+  def test_an_around_callback_is_refused
+    broken = app_with do |m|
+      save = m["models"].find { _1["name"] == "Post" }["callbacks"]["save"]
+      save << save.last.merge("kind" => "around", "if" => [])
+    end
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", broken) }
+    assert_equal "app/models/post.rb: around_save callbacks isn't supported yet", error.message
+  end
+
+  def test_a_namespaced_model_is_refused
+    renamed = app_with { |m| m["models"].find { _1["name"] == "Post" }["name"] = "Blog::Post" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Blog::Post", renamed) }
+    assert_equal "app/models/post.rb: the namespaced model Blog::Post isn't supported yet", error.message
+  end
 end

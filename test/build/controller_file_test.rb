@@ -99,7 +99,7 @@ class ControllerFileTest < Minitest::Test
 
   def test_render_must_end_the_action
     error = assert_raises(Rutile::Build::Unsupported) { action("render json: { a: 1 }\nhead :ok") }
-    assert_equal "snippet.rb:1: render or head before the end of an action isn't supported yet", error.message
+    assert_equal "snippet.rb:1: render or head anywhere but at the end of an action isn't supported yet", error.message
   end
 
   # Ruby reads `draft?` before `save` runs; so must the Rust.
@@ -120,5 +120,22 @@ class ControllerFileTest < Minitest::Test
       error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(moved, "PostsController").to_rust }
       assert_match(%r{\Aapp/controllers/posts_controller.rb:\d+: layout in a class body isn't supported yet\z}, error.message)
     end
+  end
+
+  def test_a_before_action_that_renders_is_refused
+    app = scratch_app({ "app/controllers/posts_controller.rb" =>
+                          ->(ruby) { ruby.sub("@post = Post.find(params[:id])", "render json: {}, status: :forbidden") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(app, "PostsController").to_rust }
+    assert_equal "app/controllers/posts_controller.rb:38: render or head anywhere but at the end of an action isn't supported yet",
+                 error.message
+  end
+
+  # Rails ANDs the action lists (`only:` plus a skip_before_action `except:`).
+  def test_several_action_conditions_are_all_required
+    both = app_with do |m|
+      m["controllers"].find { _1["name"] == "PostsController" }["filters"][0]["if"] << { "actions" => ["show"] }
+    end
+    assert_rust_includes Rutile::Build::ControllerFile.new(both, "PostsController").to_rust,
+                         'if matches!(action, "destroy" | "show" | "update") && matches!(action, "show") {'
   end
 end

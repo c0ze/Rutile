@@ -31,4 +31,14 @@ class RoutesFileTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::RoutesFile.new(broken).to_rust }
     assert_equal "config/routes.rb: GET /users/:id(.:format) users#show: requirements isn't supported yet", error.message
   end
+
+  def test_a_route_without_a_controller_is_refused
+    redirect = app_with do |m|
+      m["routes"] << { "verb" => "GET", "path" => "/old(.:format)", "controller" => nil, "action" => nil, "name" => nil,
+                       "requirements" => {}, "request_constraints" => {}, "callable_constraints" => [] }
+    end
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::RoutesFile.new(redirect).to_rust }
+    assert_equal "config/routes.rb: GET /old(.:format): a route without a controller (a redirect or a mount) isn't supported yet",
+                 error.message
+  end
 end

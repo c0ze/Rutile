@@ -25,7 +25,8 @@ module Rutile
       private
 
       def route(route)
-        where = "#{route["verb"]} #{route["path"]} #{route["controller"]}##{route["action"]}"
+        where = "#{route["verb"]} #{route["path"]}#{" #{route["controller"]}##{route["action"]}" if route["controller"]}"
+        unsupported!("#{where}: a route without a controller (a redirect or a mount)") unless route["controller"]
         unsupported!("#{where}: requirements") unless route["requirements"].empty?
         unsupported!("#{where}: request constraints") unless route["request_constraints"].empty?
         handler = handler(route, where)
