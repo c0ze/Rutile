@@ -1,5 +1,6 @@
 require "minitest/autorun"
 require "socket"
+require "zlib"
 require "rack"
 require_relative "../../lib/rutile/verify/target"
 
@@ -52,5 +53,26 @@ class TargetTest < Minitest::Test
     target.call(Rack::MockRequest.env_for("/up"))
     server.join
     assert_equal 1, calls
+  end
+
+  # Net::HTTP asks for compression on its own and inflates what comes back;
+  # the forwarded request must carry only what the test sent.
+  def test_sends_no_accept_encoding_the_test_did_not_send
+    server = RecordingServer.new("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+    Rutile::Verify::Target.new("http://127.0.0.1:#{server.port}").call(Rack::MockRequest.env_for("/up"))
+    server.join
+    refute_match(/^Accept-Encoding:/i, server.request)
+  end
+
+  def test_passes_a_compressed_response_through_untouched
+    gzipped = Zlib.gzip("{}")
+    reply = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: gzip\r\nContent-Length: #{gzipped.bytesize}\r\nConnection: close\r\n\r\n".b + gzipped
+    server = RecordingServer.new(reply)
+    target = Rutile::Verify::Target.new("http://127.0.0.1:#{server.port}")
+    _, headers, body = target.call(Rack::MockRequest.env_for("/up", "HTTP_ACCEPT_ENCODING" => "gzip"))
+    server.join
+    assert_match(/^Accept-Encoding: gzip\r$/i, server.request)
+    assert_equal "gzip", headers["content-encoding"]
+    assert_equal gzipped, body.join.b
   end
 end

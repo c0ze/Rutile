@@ -1,5 +1,5 @@
-require "net/http"
 require_relative "../lib/rutile/unbundled"
+require_relative "support/servers"
 
 # Rails (Puma) and the Rust port on the same database and rows, measured
 # with RustOnRails' `loadgen`: requests per second, p50/p99 latency, and
@@ -11,10 +11,11 @@ namespace :example do
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog", "-p", "loadgen" }
     loadgen = File.join(rust, "target/release/loadgen")
     seed_posts
+    [54410, 54420].each { ExampleServers.ensure_port_free(_1) }
     rails = start_rails(54410, threads: 5)
     rust_server = start_rust(rust, 54420, workers: 5)
     [["rails", 54410, rails], ["rust", 54420, rust_server]].each do |name, port, pid|
-      wait_for_up("http://127.0.0.1:#{port}/up")
+      ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", pid)
       id = first_post_id
       ["/posts", "/posts/#{id}"].each do |path|
         url = "http://127.0.0.1:#{port}#{path}"
@@ -23,10 +24,7 @@ namespace :example do
       end
     end
   ensure
-    [rails, rust_server].compact.each do |pid|
-      Process.kill("TERM", pid)
-      Process.wait(pid)
-    end
+    ExampleServers.stop_all([rails, rust_server])
   end
 end
 

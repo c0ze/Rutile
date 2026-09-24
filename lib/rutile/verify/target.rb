@@ -5,7 +5,13 @@ module Rutile
     # A Rack app that forwards each request of a Rails integration test to
     # another server, so the app's own tests exercise a compiled build.
     class Target
-      FORWARDED = { "CONTENT_TYPE" => "Content-Type", "HTTP_ACCEPT" => "Accept" }.freeze
+      FORWARDED = {
+        "CONTENT_TYPE" => "Content-Type", "HTTP_ACCEPT" => "Accept", "HTTP_ACCEPT_ENCODING" => "Accept-Encoding"
+      }.freeze
+      # Headers Net::HTTP fills in by itself. Given its own Accept-Encoding,
+      # it would also inflate the response before the test saw it.
+      DEFAULTED = %w[accept accept-encoding user-agent].freeze
+      RETURNED = %w[content-type content-encoding].freeze
 
       # The app's route set: integration tests only get URL helpers such as
       # `posts_path` from an app that answers `routes`.
@@ -21,13 +27,15 @@ module Rutile
       def call(env)
         request = Rack::Request.new(env)
         body = request.body&.read.to_s
-        outgoing = Net::HTTPGenericRequest.new(request.request_method, !body.empty?, request.request_method != "HEAD", request.fullpath)
+        # Naming accept-encoding up front is what stops Net::HTTP inflating.
+        outgoing = Net::HTTPGenericRequest.new(request.request_method, !body.empty?, request.request_method != "HEAD",
+                                               request.fullpath, "accept-encoding" => "identity")
+        DEFAULTED.each { outgoing.delete(_1) }
         FORWARDED.each { |key, header| outgoing[header] = env[key] if env[key] }
         outgoing.body = body unless body.empty?
         response = Net::HTTP.start(@uri.host, @uri.port) { |http| http.request(outgoing) }
         @after_request&.call
-        headers = {}
-        headers["content-type"] = response["content-type"] if response["content-type"]
+        headers = RETURNED.to_h { [_1, response[_1]] }.compact
         [response.code.to_i, headers, [response.body.to_s]]
       end
 
