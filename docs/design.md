@@ -44,13 +44,18 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 
 ### 3. Build
 
-Prism AST + manifest go through three stages:
+`rutile build` reads the manifest (running introspection first unless given one) and the Ruby files it points at, and writes one Rust file per Ruby file. The manifest decides structure; Prism gives the bodies.
 
-1. **Resolve.** Constants, method lookup through modules and superclasses, which `@ivar` belongs to which class.
-2. **Type.** See below. Every expression ends up with a static type or `Value`.
-3. **Emit.** Rust source as text, one Rust function per Ruby method, each with a `// path:line` comment pointing back to the Ruby. `rustfmt` formats it and `cargo check` is the gate: if generated code fails to type-check in rustc, that is a Rutile bug, and the user should never have to read the rustc error.
+- **From the manifest:** a `model!` struct per table (columns in database order, database defaults, enum columns holding labels), association constants with their automatic inverses, and the `Behavior` chain: validations in the order of the validate chain (so `belongs_to`'s required check and `enum ..., validate: true` sit where Rails runs them), then callbacks event by event in chain order, with `dependent: :destroy` where Rails registered it. Controllers get a struct of their instance variables and a `Controller` impl from `wrap_parameters`, `before_action` (with `only:`/`except:`) and `rescue_from`. Routes come out in match order, constraint lambdas as functions.
+- **From the Ruby:** callback methods and blocks, scope lambdas, actions and the helpers they call, rescue handlers, route constraints. A translator gives every expression a static type (a record handle, a relation, loaded records, a string, a param value, params, attributes, JSON, an errors object, or `Option` of one of these) and emits Rust as text.
+- **Borrowing:** the `Ctx` is one `&mut` value, so anything that reads or writes it is bound to a local before a call that borrows it mutably. Bindings follow Ruby's evaluation order (receiver before arguments, left to right) and each expression runs once: `@post.update(post_params)` names the unwrapped record and the attributes once, assigns, then saves.
+- **Nil:** an association that can be nil and an instance variable a filter may not have set are `Option`. Calling a method on one is `Error::Nil`, which Rails would raise as NoMethodError (a 500); `&.` becomes `map`/`is_some_and`; `||=` assigns only when the attribute is nil; `render json:` of nil renders `null`.
+- **The gate:** rustfmt, then `cargo check`, and a warning counts as a failure. A generated crate that doesn't compile is a Rutile bug.
+- **Everything else** raises `Unsupported` with the file and line: calls the translator doesn't know, `around_*` callbacks, a `before_action` that renders, route requirements, validator options beyond the common ones, scope parameters it can't type.
 
-Output is a Cargo project under `tmp/rutile/` (path not final) with `rustonrails` as its only framework dependency.
+`rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` only when it's missing, so a crate's own tests and dependencies survive a rebuild. The example crate lives at `RustOnRails/examples/blog`; its tests are hand-written.
+
+Not built yet: the `Value` fallback and rbs-inline signatures (the blog needs neither; code that would is reported as unsupported), method calls between model methods, helpers with parameters, and `rutile check`.
 
 ### 4. Verify
 

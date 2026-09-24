@@ -40,8 +40,18 @@ namespace :example do
     end
   end
 
+  desc "Generate the example app's Rust crate into RustOnRails/examples/blog"
+  task build: :db do
+    require_relative "../lib/rutile"
+    rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
+    clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
+    Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples/blog"), runtime: rust, name: "blog",
+                      env: "test", vars: clean)
+    puts "generated #{File.join(rust, "examples/blog/src")}"
+  end
+
   desc "Run the example app's integration tests against the Rust port"
-  task verify: :db do
+  task verify: :build do
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     port = ENV.fetch("VERIFY_PORT", "54400")
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog" }

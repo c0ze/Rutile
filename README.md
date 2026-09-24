@@ -6,32 +6,48 @@ Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The sou
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
-**Status:** started 2026-09-25. `rutile introspect` works (format in [docs/manifest.md](docs/manifest.md)). The PoC app, [examples/blog](examples/blog), has a hand-written Rust port in RustOnRails that passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`) and serves 21 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile build`, which will generate that port, is next; `check` doesn't exist yet.
+**Status:** started 2026-09-25. `rutile introspect` and `rutile build` work on the PoC app, [examples/blog](examples/blog): the Rust crate in `RustOnRails/examples/blog` is generated (`bundle exec rake example:build`), passes the Rust tests written for the hand port it replaced, and passes all 17 of the blog's Rails integration tests (`bundle exec rake example:verify`). The Rust side serves 21 to 27 times the requests per second Rails does ([docs/benchmarks.md](docs/benchmarks.md)). `rutile check` doesn't exist yet; anything outside the subset makes `rutile build` stop with the file and line.
 
-## What it will do
+## What it does
 
 ```ruby
-#: (Array[Item]) -> Integer
-def total(items)
-  items.select { |i| i.active? }.sum(&:price)
+# app/controllers/posts_controller.rb
+def update
+  if @post.update(post_params)
+    render json: @post
+  else
+    render json: @post.errors, status: :unprocessable_content
+  end
 end
 ```
 
 becomes
 
 ```rust
-// app/models/order.rb:12
-fn total(items: &[Item]) -> i64 {
-    items.iter().filter(|i| i.is_active()).map(|i| i.price).sum()
+// app/controllers/posts_controller.rb:22
+pub fn update(&mut self, req: &mut Request) -> Result<Response> {
+    let post = self.post.ok_or(Error::Nil { what: "update" })?;
+    let attributes = self.post_params(req)?;
+    req.ctx.assign(post, &attributes)?;
+    if req.ctx.save(post)? {
+        Ok(Response::json(status::OK, AsJson::<Post>::new().render_option(&mut req.ctx, self.post)?))
+    } else {
+        Ok(Response::json(
+            status::UNPROCESSABLE_CONTENT,
+            errors_json(req.ctx.errors(self.post.ok_or(Error::Nil { what: "errors" })?)),
+        ))
+    }
 }
 ```
 
-The planned commands, in the order you'd run them:
+`@post` may be nil in Ruby, so it's an `Option`, and calling a method on nil is the same error Ruby raises. The receiver is evaluated before `post_params`, as in Ruby.
 
-1. `rutile check` parses the app with Prism and reports every construct outside the subset (`eval`, `method_missing`, `send` with a computed name, monkey patches, unsupported gems), each with a suggested rewrite.
+The commands, in the order you'd run them:
+
+1. `rutile check` (planned) parses the app with Prism and reports every construct outside the subset (`eval`, `method_missing`, `send` with a computed name, monkey patches, unsupported gems), each with a suggested rewrite.
 2. `rutile introspect` boots the app and dumps what Rails built at load time: schema, routes, associations, validations, callbacks, enums, scopes, controller filters. Rails resolves its own metaprogramming; Rutile reads the result.
-3. `rutile build` types the code and writes a Cargo project that depends on `rustonrails`. `cargo build --release` gives you the binary.
-4. `rutile verify` runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
+3. `rutile build APP --out DIR --runtime RUSTONRAILS` writes a Cargo crate that depends on `rustonrails`, formats it and checks it with `cargo check`. `cargo build --release` gives you the binary.
+4. Verify (for now `rake example:verify`) runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
 
 The full design is in [docs/design.md](docs/design.md).
 

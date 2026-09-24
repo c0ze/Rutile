@@ -6,7 +6,7 @@ require_relative "support/servers"
 # resident memory.
 namespace :example do
   desc "Benchmark the example app on Rails and on the Rust port"
-  task benchmark: :db do
+  task benchmark: :build do
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog", "-p", "loadgen" }
     loadgen = File.join(rust, "target/release/loadgen")
