@@ -65,4 +65,17 @@ class RulesTest < Minitest::Test
   def test_a_file_that_does_not_parse
     assert_match %r{\Aapp/models/broken.rb: }, findings("app/models/broken.rb" => "class Broken\n  def x(\nend\n").first
   end
+
+  def test_every_way_to_reopen_a_core_class
+    ruby = <<~RUBY
+      class ::String; end
+      module Tools
+        class ::String; end
+      end
+      class String < Object; end
+      String.class_eval { def extra = 1 }
+    RUBY
+    assert_equal [1, 3, 5, 6].map { "lib/core_ext.rb:#{_1}: reopening String can't be compiled; use a helper module" },
+                 findings("lib/core_ext.rb" => ruby)
+  end
 end

@@ -10,6 +10,8 @@ module Rutile
         "ActionController::ParameterMissing" => "ParameterMissing"
       }.freeze
       APPLICATION = "app/controllers/application_controller.rb"
+      # What a helper may return: the types with a Rust spelling.
+      RETURNABLE = %i[record relation nilable str int float bool time value json attributes].freeze
 
       # Every app controller that has actions.
       def self.all(app) = app.controllers.reject { _1["actions"].empty? }.map { new(app, _1["name"]) }
@@ -49,7 +51,9 @@ module Rutile
         @ivars[name] = field
       end
 
-      def ivar_type(name) = @ivars[name]
+      # Unknown after a filter failed: the filter is already reported, and
+      # whatever reads what it would have set is skipped.
+      def ivar_type(name) = @ivars[name] || (@filter_failed ? raise(Skipped, name) : nil)
 
       # A method of this controller that isn't an action, translated the
       # first time something calls it. A filter returns nothing; a helper
@@ -65,7 +69,10 @@ module Rutile
         node = defs.find { _1.name.to_s == name } or return nil
         @helpers[name] = nil
         @helpers[name] = @app.attempt({ failed: true }) { translate_helper(name, node, tail) }
-        raise Skipped, name if @helpers[name][:failed]
+        if @helpers[name][:failed]
+          @filter_failed = true if tail == :unit
+          raise Skipped, name
+        end
 
         @helpers[name][:type]
       end
@@ -77,6 +84,8 @@ module Rutile
 
         lines, type = translator.body(node.body, tail)
         returned = { unit: "()", response: "Response" }.fetch(tail) do
+          raise Unsupported.at(@path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
+
           @uses.type(type)
           type.rust
         end
@@ -131,7 +140,10 @@ module Rutile
       def guard(condition, negate)
         unsupported!("before_action conditions other than only: and except:") unless condition.key?("actions")
 
-        "#{negate}matches!(action, #{condition["actions"].map { Names.str(_1) }.join(" | ")})"
+        actions = condition["actions"]
+        return negate.empty? ? "false" : "true" if actions.empty?
+
+        "#{negate}matches!(action, #{actions.map { Names.str(_1) }.join(" | ")})"
       end
 
       def controller_impl(filters)

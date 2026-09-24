@@ -9,6 +9,9 @@ module Rutile
       KEYWORDS = %w[as async await abstract become box break const continue crate do dyn else enum extern false final fn
                     for gen if impl in let loop macro match mod move mut override priv pub ref return static struct super
                     trait true try type typeof unsafe unsized use virtual where while yield].freeze
+      # Keywords that can't be raw identifiers either.
+      UNRAW = %w[crate self super Self].freeze
+      SENDS = %w[send public_send __send__].freeze
 
       include ModelCalls
       include Borrowing
@@ -30,12 +33,14 @@ module Rutile
         @writes = Hash.new(0)
         @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS].compact)
         @renames = {}
+        @params = Set.new
         @lines = []
       end
 
       # A parameter the body can read, spelled `rust` in Rust.
       def declare(name, rust, type)
         @locals[name] = Code[rust, type, local: true]
+        @params << name
         @taken << rust
       end
 
@@ -137,6 +142,7 @@ module Rutile
 
       def assign_local(node)
         name = node.name.to_s
+        unsupported!(node, "assigning to the parameter #{name}") if @params.include?(name)
         rust = @renames.fetch(name, name)
         code = expr(node.value)
         if (known = @locals[name])
@@ -226,16 +232,22 @@ module Rutile
       def call(node)
         args = node.arguments&.arguments || []
         unsupported!(node, "a block passed to #{node.name}") if node.block
-        return self_call(node, node.name.to_s, args) if node.receiver.nil?
+        name = node.name.to_s
+        # design.md: `send(:title)` is a direct call to `title`.
+        if SENDS.include?(name) && (args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode))
+          name = args.first.unescaped
+          args = args.drop(1)
+        end
+        return self_call(node, name, args) if node.receiver.nil?
 
         receiver = expr(node.receiver)
         unsupported!(node, "a call chained after &.") if receiver.extra[:nav]
         # Ruby evaluates the receiver before the arguments, which matters
         # only when an argument can do something.
         receiver = bind(receiver) if impure?(receiver) && !args.all? { literal?(_1) }
-        return safe_call(receiver, node, args) if node.safe_navigation?
+        return safe_call(receiver, node, name, args) if node.safe_navigation?
 
-        send_to(receiver, node, node.name.to_s, args)
+        send_to(receiver, node, name, args)
       end
 
       def self_call(node, name, args)
@@ -254,14 +266,14 @@ module Rutile
       end
 
       # `x&.m`: nil stays nil, otherwise `m` runs on the value.
-      def safe_call(receiver, node, args)
-        return send_to(receiver, node, node.name.to_s, args) unless receiver.type.nilable?
+      def safe_call(receiver, node, name, args)
+        return send_to(receiver, node, name, args) unless receiver.type.nilable?
 
         receiver = bind(receiver) if receiver.reads? || impure?(receiver)
         var = @locals.key?(receiver.hint) || receiver.hint.nil? ? fresh("value") : receiver.hint
         saved = @lines
         @lines = []
-        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, node.name.to_s, args)
+        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, name, args)
         unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
         unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
         @lines = saved

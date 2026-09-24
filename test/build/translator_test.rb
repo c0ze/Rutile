@@ -124,4 +124,10 @@ class TranslatorTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { callback("Post.where(created_at: published_at..)") }
     assert_equal "snippet.rb:1: a where range from a value that may be nil isn't supported yet", error.message
   end
+
+  # design.md: send(:literal) compiles to a direct call.
+  def test_send_with_a_literal_name_is_a_direct_call
+    assert_rust_includes callback("self.body = send(:title)"), "let title = ctx[post].title.clone(); ctx[post].body = title;"
+    assert_rust_includes callback('self.body = public_send("title")'), "ctx[post].body = title"
+  end
 end

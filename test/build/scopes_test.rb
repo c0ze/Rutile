@@ -36,4 +36,20 @@ class ScopesTest < Minitest::Test
     assert_rust_includes Rutile::Build::ModelFile.new(app, "Post").to_rust,
                          'fn visible(self, r#type: String) -> Self { self.where_eq("status", r#type.clone()) }'
   end
+
+  def test_destructured_scope_parameters_are_refused
+    app = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("-> { where(status: :published) }", "->((x, y)) { where(status: x) }") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
+    assert_equal "app/models/post.rb:10: scope parameters other than plain ones isn't supported yet", error.message
+  end
+
+  # `crate` can't be a raw identifier; a reassigned parameter would need `mut`.
+  def test_awkward_scope_parameter_names
+    crate = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("-> { where(status: :published) }", "->(crate) { where(status: crate) }") } })
+    assert_rust_includes Rutile::Build::ModelFile.new(crate, "Post").to_rust,
+                         'fn visible(self, crate_: String) -> Self { self.where_eq("status", crate_.clone()) }'
+    again = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("-> { where(status: :published) }", "->(type) { type = type; where(status: type) }") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(again, "Post").to_rust }
+    assert_equal "app/models/post.rb:10: assigning to the parameter type isn't supported yet", error.message
+  end
 end

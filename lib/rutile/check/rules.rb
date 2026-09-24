@@ -9,6 +9,8 @@ module Rutile
       EVALS = %i[instance_eval class_eval module_eval].freeze
       SENDS = %i[send public_send __send__].freeze
       STATE = "a constant, Rails.cache, or the database"
+      # Calls on a core class that change it: `String.class_eval { ... }`.
+      REOPENERS = %i[class_eval module_eval class_exec module_exec prepend include extend define_method alias_method].freeze
 
       # Every .rb file under app/ and lib/.
       def self.scan(root, diagnostics)
@@ -29,6 +31,10 @@ module Rutile
 
       def visit_call_node(node)
         args = node.arguments&.arguments || []
+        if REOPENERS.include?(node.name) && (core = core_name(node.receiver, absolute_only: false))
+          report(node, "reopening #{core}", "a helper module")
+          return super
+        end
         case node.name
         when :eval then report(node, "eval", "a method, or a block form the compiler understands")
         when *EVALS
@@ -67,17 +73,24 @@ module Rutile
       private
 
       def nested(node)
-        name = node.constant_path
-        if @depth.zero? && name.is_a?(Prism::ConstantReadNode) && CORE.include?(name.name.to_s) &&
-           !(node.is_a?(Prism::ClassNode) && node.superclass)
-          report(node, "reopening #{name.name}", "a helper module")
-        end
+        core = core_name(node.constant_path, absolute_only: !@depth.zero?)
+        report(node, "reopening #{core}", "a helper module") if core
         @depth += 1
         begin
           yield
         ensure
           @depth -= 1
         end
+      end
+
+      # The core class a constant names: `String` at the top level, or
+      # `::String` anywhere.
+      def core_name(node, absolute_only:)
+        name = case node
+               when Prism::ConstantReadNode then node.name unless absolute_only
+               when Prism::ConstantPathNode then node.name if node.parent.nil?
+               end
+        name && CORE.include?(name.to_s) ? name : nil
       end
 
       def report(node, what, fix)

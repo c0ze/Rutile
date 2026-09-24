@@ -47,4 +47,24 @@ class DiagnosticsTest < Minitest::Test
     assert_equal files(self.app).keys, generated.keys
     assert_equal files(self.app), generated
   end
+
+  # A filter that can't compile is one problem; the actions reading what it
+  # would have set are skipped, not reported again.
+  def test_a_failing_filter_is_reported_once
+    broken = ->(ruby) { ruby.sub("@post = Post.find(params[:id])", "@post = Post.find_by_sql(\"x\")") }
+    app = scratch_app({ "app/controllers/posts_controller.rb" => broken }, diagnostics: COLLECT.())
+    files(app)
+    assert_equal ["app/controllers/posts_controller.rb:38: find_by_sql on Post isn't supported yet"], app.diagnostics.problems
+  end
+
+  # The source rules already report a file that doesn't parse; the build
+  # pass carries on with the other files.
+  def test_a_syntax_error_does_not_end_collection
+    broken = ->(ruby) { ruby.sub(/^end\s*\z/, "  def broken(\nend\n") }
+    app = scratch_app({ "app/controllers/posts_controller.rb" => broken }, diagnostics: COLLECT.())
+    generated = files(app)
+    assert_equal 1, app.diagnostics.problems.size
+    assert_match %r{\Aapp/controllers/posts_controller.rb: }, app.diagnostics.problems.first
+    assert generated.key?("src/controllers/users.rs")
+  end
 end

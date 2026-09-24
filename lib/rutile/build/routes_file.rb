@@ -58,7 +58,9 @@ module Rutile
         location = constraint["proc"] or unsupported!("#{where}: a constraint object")
         node = @app.source.block_at(location["path"], location["line"])
         params = node.parameters&.parameters&.requireds || []
-        unsupported!("#{where}: a constraint lambda without one request parameter") unless params.size == 1
+        unless params.size == 1 && params.first.is_a?(Prism::RequiredParameterNode)
+          unsupported!("#{where}: a constraint lambda without one request parameter")
+        end
 
         name = "#{route["controller"]}_#{route["action"]}_constraint"
         name += "_#{@constraints.size + 1}" if @constraints.any? { _1.include?("fn #{name}(") }

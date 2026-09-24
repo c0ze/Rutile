@@ -10,7 +10,8 @@ module Rutile
       def tree(path)
         @trees[path] ||= begin
           result = Prism.parse_file(File.join(@root, path))
-          raise Error, "#{path}: #{result.errors.first.message}" if result.failure?
+          # Unsupported, so `rutile check` records it and carries on.
+          raise Unsupported, "#{path}: #{result.errors.first.message}" if result.failure?
 
           result.value
         end

@@ -138,4 +138,15 @@ class ControllerFileTest < Minitest::Test
     assert_rust_includes Rutile::Build::ControllerFile.new(both, "PostsController").to_rust,
                          'if matches!(action, "destroy" | "show" | "update") && matches!(action, "show") {'
   end
+
+  def test_a_helper_returning_params_is_refused
+    app = scratch_app({ "app/controllers/posts_controller.rb" => ->(ruby) { ruby.sub("params.expect(post: %i[user_id title body status])", "params") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(app, "PostsController").to_rust }
+    assert_equal "app/controllers/posts_controller.rb:41: a helper returning params isn't supported yet", error.message
+  end
+
+  def test_an_empty_action_list_is_a_constant
+    none = app_with { |m| m["controllers"].find { _1["name"] == "PostsController" }["filters"][0]["if"] = [{ "actions" => [] }] }
+    assert_rust_includes Rutile::Build::ControllerFile.new(none, "PostsController").to_rust, "if false { self.set_post(req)?; }"
+  end
 end

@@ -58,7 +58,7 @@ module Rutile
         types = parameter_types(node, names, path)
         translator = Translator.new(@app, path, @uses, env: :scope, model: @model, result: false)
         # A Ruby name that's a Rust keyword becomes a raw identifier.
-        rust = names.to_h { [_1, Translator::KEYWORDS.include?(_1) ? "r##{_1}" : _1] }
+        rust = names.to_h { [_1, rust_name(_1)] }
         names.each { translator.declare(_1, rust[_1], types.fetch(_1)) }
         lines, type = translator.body(node.body, :value)
         raise Unsupported.at(path, node, "a scope that doesn't return a relation") unless type.kind == :relation
@@ -68,10 +68,19 @@ module Rutile
         ["#{signature} -> Self;", "// #{path}:#{line}\n#{signature} -> Self {\n#{lines.join("\n")}\n}"]
       end
 
+      # A Ruby name that's a Rust keyword: a raw identifier, or a trailing
+      # underscore for the ones that can't be raw.
+      def rust_name(name)
+        return name unless Translator::KEYWORDS.include?(name) || Translator::UNRAW.include?(name)
+
+        Translator::UNRAW.include?(name) ? "#{name}_" : "r##{name}"
+      end
+
       def parameters(node, path)
         params = node.parameters&.parameters or return []
         plain = params.optionals.empty? && params.posts.empty? && params.keywords.empty? &&
-                params.rest.nil? && params.keyword_rest.nil? && params.block.nil?
+                params.rest.nil? && params.keyword_rest.nil? && params.block.nil? &&
+                params.requireds.all?(Prism::RequiredParameterNode)
         raise Unsupported.at(path, node, "scope parameters other than plain ones") unless plain
 
         params.requireds.map { _1.name.to_s }
