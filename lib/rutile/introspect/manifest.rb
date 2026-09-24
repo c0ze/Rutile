@@ -1,5 +1,6 @@
 require_relative "source"
 require_relative "config"
+require_relative "tables"
 
 module Rutile
   module Introspect
@@ -15,7 +16,8 @@ module Rutile
           "manifest_version" => VERSION,
           "rails_version" => Rails.version,
           "ruby_version" => RUBY_VERSION,
-          "config" => Config.extract(app)
+          "config" => Config.extract(app),
+          "tables" => Tables.extract
         }
       end
     end

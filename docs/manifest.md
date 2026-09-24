@@ -28,3 +28,20 @@ Conventions:
 | `time_zone` | `"UTC"` | `config.time_zone`, what `Time.current` uses |
 | `default_locale` | `"en"` | `I18n.default_locale`, which picks validation messages |
 | `active_record_default_timezone` | `"utc"` | how Active Record stores times |
+
+## `tables`
+
+Every table except Rails' own bookkeeping (`schema_migrations`, `ar_internal_metadata`), sorted by name, read from the live connection.
+
+```json
+{
+  "name": "posts",
+  "primary_key": "id",
+  "columns": [
+    {"name": "status", "type": "integer", "sql_type": "integer", "null": false,
+     "default": "0", "default_function": null, "limit": 4, "precision": null, "scale": null}
+  ]
+}
+```
+
+Columns keep database order. `type` is Active Record's type name; `default` is the database default as a string, `default_function` is set instead when the default is an expression such as `nextval(...)`.

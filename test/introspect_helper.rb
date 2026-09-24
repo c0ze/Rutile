@@ -22,4 +22,12 @@ module IntrospectHelper
   end
 
   def manifest = IntrospectHelper.manifest
+
+  def table(name)
+    manifest.fetch("tables").find { _1["name"] == name } || flunk("no table #{name}")
+  end
+
+  def column(table, name)
+    table.fetch("columns").find { _1["name"] == name } || flunk("no column #{name}")
+  end
 end
