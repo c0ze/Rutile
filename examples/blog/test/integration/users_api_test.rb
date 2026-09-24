@@ -32,7 +32,9 @@ class UsersApiTest < ActionDispatch::IntegrationTest
 
   test "lookup without an email fails its route constraint and falls through to show" do
     get lookup_users_path, as: :json
-    assert_equal "show", controller.action_name
     assert_response :not_found
+    assert_equal({ "error" => "not found" }, response.parsed_body)
+    # Which action ran is only visible inside Rails.
+    assert_equal "show", controller.action_name unless ENV["RUTILE_TARGET"]
   end
 end

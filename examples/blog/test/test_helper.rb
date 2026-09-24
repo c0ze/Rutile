@@ -13,3 +13,9 @@ module ActiveSupport
     # Add more helper methods to be used by all tests here...
   end
 end
+
+# `rake example:verify` runs these tests against the Rust build through a proxy.
+if (target = ENV["RUTILE_TARGET"])
+  require_relative "../../../lib/rutile/verify/target"
+  Rutile::Verify::Target.install(target)
+end

@@ -1,3 +1,4 @@
+require "net/http"
 require_relative "../lib/rutile/unbundled"
 
 # A throwaway Postgres cluster under tmp/pg for the example app, using the
@@ -8,6 +9,18 @@ EXAMPLE_APP = File.expand_path("../examples/blog", __dir__)
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
+
+# Polls until the server answers, for up to 30 seconds.
+def wait_for_up(url)
+  deadline = Time.now + 30
+  begin
+    Net::HTTP.get_response(URI(url))
+  rescue SystemCallError
+    raise "#{url} didn't come up" if Time.now > deadline
+    sleep 0.2
+    retry
+  end
+end
 
 def pg_running?
   system("pg_ctl", "-D", PG_DIR, "status", out: File::NULL, err: File::NULL)
@@ -36,6 +49,23 @@ namespace :example do
   task db: "pg:start" do
     Dir.chdir(EXAMPLE_APP) do
       Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "db:prepare") }
+    end
+  end
+
+  desc "Run the example app's integration tests against the Rust port"
+  task verify: :db do
+    rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
+    port = ENV.fetch("VERIFY_PORT", "54400")
+    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog" }
+    env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/blog_test", "BIND" => "127.0.0.1:#{port}", "WORKERS" => "4" }
+    server = spawn(env, File.join(rust, "target/release/blog"))
+    begin
+      wait_for_up("http://127.0.0.1:#{port}/up")
+      target = { "RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1" }
+      Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { sh(EXAMPLE_ENV.merge(target), "bin/rails", "test", "test/integration") } }
+    ensure
+      Process.kill("TERM", server)
+      Process.wait(server)
     end
   end
 

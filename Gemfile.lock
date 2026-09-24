@@ -7,6 +7,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     minitest (5.27.0)
+    rack (3.2.7)
     rake (13.4.2)
 
 PLATFORMS
@@ -15,6 +16,7 @@ PLATFORMS
 
 DEPENDENCIES
   minitest (~> 5.25)
+  rack (~> 3.1)
   rake (~> 13.2)
   rutile!
 
