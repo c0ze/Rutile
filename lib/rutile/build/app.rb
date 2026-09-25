@@ -54,6 +54,15 @@ module Rutile
         nil
       end
 
+      # `will_save_change_to_status?` → "status" when it's a column.
+      def change_to_save(name, method)
+        column = method.to_s[/\Awill_save_change_to_(\w+)\?\z/, 1]
+        column if column && column(name, column)
+      end
+
+      # `saved_change_to_status?`, which describes the last save.
+      def saved_change?(method) = method.to_s.match?(/\Asaved_change_to_\w+\?\z/)
+
       def scope(name, scope) = model(name)["scopes"].find { _1["name"] == scope.to_s }
 
       def controllers = manifest.fetch("controllers")

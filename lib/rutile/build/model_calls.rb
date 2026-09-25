@@ -63,6 +63,9 @@ module Rutile
 
       def record_method(receiver, node, model, name, args)
         need_ctx!(node)
+        dirty = change_to_save(receiver, model, name, node) if args.empty?
+        return dirty if dirty
+
         case [name, args.size]
         when ["save", 0] then mutate(receiver, "save", T::BOOL)
         when ["save!", 0] then mutate(receiver, "save_bang", T::UNIT)

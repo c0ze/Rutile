@@ -126,14 +126,18 @@ module Rutile
         entry["if"].filter_map { condition(_1, "when", label) } + entry["unless"].filter_map { condition(_1, "unless", label) }
       end
 
-      # An enum predicate becomes a closure, and the halting check Rails
-      # adds to after-callbacks needs nothing. Rails also adds a lambda for
-      # `on: :create`, which looks like any framework proc: refuse it
-      # rather than run the callback on every save.
+      # An enum predicate or `will_save_change_to_x?` becomes a closure, and
+      # the halting check Rails adds to after-callbacks needs nothing. Rails
+      # also adds a lambda for `on: :create`, which looks like any framework
+      # proc: refuse it rather than run the callback on every save.
       def condition(cond, method, label)
-        if cond.key?("method")
-          @app.enum_predicate(@name, cond["method"]) or unsupported!("#{label} with the condition :#{cond["method"]}")
-          ".#{method}(|ctx, #{@var}| ctx[#{@var}].#{Names.method(cond["method"])}())"
+        if (column = cond.key?("method") && @app.change_to_save(@name, cond["method"]))
+          ".#{method}(|ctx, #{@var}| ctx.attribute_changed(#{@var}, #{Names.str(column)}))"
+        elsif cond.key?("method")
+          name = cond["method"]
+          unsupported!("#{label} with the condition :#{name}, #{RecordCalls::LAST_SAVE}") if @app.saved_change?(name)
+          @app.enum_predicate(@name, name) or unsupported!("#{label} with the condition :#{name}")
+          ".#{method}(|ctx, #{@var}| ctx[#{@var}].#{Names.method(name)}())"
         elsif cond["object"] == HALTING
           nil
         elsif cond["origin"] == "framework"

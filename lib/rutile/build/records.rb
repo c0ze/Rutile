@@ -4,7 +4,19 @@ module Rutile
     # `Attributes`, or a literal hash whose keys are columns and belongs_to
     # associations.
     module RecordCalls
+      # RustOnRails keeps the changes to save, not those of the last save.
+      LAST_SAVE = "which needs the last save's changes,"
+
       private
+
+      # `will_save_change_to_status?`; nil for any other dirty method.
+      def change_to_save(receiver, model, name, node)
+        if (column = @app.change_to_save(model, name))
+          receiver = settle([receiver], :read).first
+          return Code["#{ctx_recv}.attribute_changed(#{receiver.rust}, #{Names.str(column)})", T::BOOL, :read]
+        end
+        unsupported!(node, "#{name}, #{LAST_SAVE}") if @app.saved_change?(name)
+      end
 
       def hash?(node) = node.is_a?(Prism::KeywordHashNode) || node.is_a?(Prism::HashNode)
 
