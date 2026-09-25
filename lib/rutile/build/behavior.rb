@@ -10,7 +10,8 @@ module Rutile
                   "_ensure_no_duplicate_errors", "normalize_changed_in_place_attributes"].freeze
       # The condition Rails adds to every after-callback: stop if the block returned false.
       HALTING = "ActiveSupport::Callbacks::Conditionals::Value"
-      OPTIONS = { "presence" => [], "uniqueness" => [], "length" => %w[minimum maximum], "format" => %w[with] }.freeze
+
+      include Validators
 
       def initialize(app, name, uses, file)
         @app = app
@@ -43,64 +44,6 @@ module Rutile
             method_hook(entry, "validate")
           end
         end
-      end
-
-      def validator(validator)
-        if (assoc = required_association(validator))
-          return ["// belongs_to :#{assoc}", ".belongs_to(&#{@name}::#{Names.constant(assoc)})"]
-        end
-        if (attribute = enum_validator(validator))
-          return enumeration(attribute, @model["enums"][attribute], true)
-        end
-
-        kind = validator["kind"]
-        validator["attributes"].each do |attribute|
-          unsupported!("a #{kind} validator on #{attribute}, which isn't a column,") unless @app.column_type(@name, attribute)
-        end
-        extra = validator["options"].keys - OPTIONS.fetch(kind) { unsupported!("#{kind} validator") }
-        unsupported!("#{kind} validator option #{extra.join(", ")}") unless extra.empty?
-        @uses.rt("Check")
-        ["// validates #{validator["attributes"].map { ":#{_1}" }.join(", ")}, #{kind}"] +
-          validator["attributes"].map { ".validates(#{Names.str(_1)}, #{check(kind, validator["options"])})" }
-      end
-
-      def check(kind, options)
-        case kind
-        when "presence" then "Check::Presence"
-        when "uniqueness" then "Check::Uniqueness"
-        when "length" then "Check::Length { minimum: #{some(options["minimum"])}, maximum: #{some(options["maximum"])} }"
-        when "format"
-          regexp = options.fetch("with")
-          pattern = RubyRegexp.to_rust(regexp["regexp"], regexp["options"], @path)
-          @uses.rt("Regex")
-          %(Check::Format(Regex::new(#{Names.raw(pattern)}).expect("the Ruby regexp compiles")))
-        end
-      end
-
-      def some(value) = value.nil? ? "None" : "Some(#{value})"
-
-      # The presence check `belongs_to` adds unless `optional: true`.
-      def required_association(validator)
-        attribute = validator["attributes"].first
-        return nil unless validator["kind"] == "presence" && validator["attributes"].size == 1 &&
-                          validator["options"] == { "if" => { "proc" => nil }, "message" => "required" }
-
-        assoc = @app.association(@name, attribute)
-        assoc && assoc["macro"] == "belongs_to" ? attribute : nil
-      end
-
-      # The inclusion check `enum ..., validate: true` adds.
-      def enum_validator(validator)
-        attribute = validator["attributes"].first
-        values = @app.enum(@name, attribute)
-        return nil unless validator["kind"] == "inclusion" && values && validator["options"] == { "in" => values.keys }
-
-        attribute
-      end
-
-      def enumeration(attribute, values, validate)
-        mapping = values.map { |label, int| "(#{Names.str(label)}, #{int})" }.join(", ")
-        ["// enum :#{attribute}", ".enumeration(#{Names.str(attribute)}, &[#{mapping}], #{validate})"]
       end
 
       def callbacks

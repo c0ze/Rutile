@@ -84,10 +84,10 @@ class ModelFileTest < Minitest::Test
 
   def test_unsupported_validators_fail_with_the_file
     broken = app_with do |m|
-      m["models"].find { _1["name"] == "Post" }["validators"][2]["options"]["allow_blank"] = true
+      m["models"].find { _1["name"] == "Post" }["validators"][2]["options"]["message"] = "is missing"
     end
     error = assert_raises(Rutile::Build::Unsupported) { rust("Post", broken) }
-    assert_match %r{app/models/post.rb: presence validator option allow_blank}, error.message
+    assert_match %r{app/models/post.rb: presence validator option message}, error.message
   end
 
   def test_callback_methods_are_translated

@@ -12,13 +12,13 @@ class DiagnosticsTest < Minitest::Test
   def test_every_unit_that_fails_is_reported_and_the_rest_still_builds
     at_end = ->(line) { ->(ruby) { ruby.sub(/^end\s*\z/, "  #{line}\nend\n") } }
     manifest = JSON.parse(IntrospectHelper.manifest_text)
-    manifest["models"].find { _1["name"] == "Post" }["validators"][2]["options"]["allow_blank"] = true
+    manifest["models"].find { _1["name"] == "Post" }["validators"][2]["options"]["message"] = "is missing"
     app = scratch_app({ "app/models/post.rb" => at_end.("default_scope { order(:id) }"),
                         "app/controllers/posts_controller.rb" => at_end.('layout "x"') }, manifest:, diagnostics: COLLECT.())
     generated = files(app)
     assert_equal [
       "app/controllers/posts_controller.rb:44: layout in a class body isn't supported yet",
-      "app/models/post.rb: presence validator option allow_blank isn't supported yet",
+      "app/models/post.rb: presence validator option message isn't supported yet",
       "app/models/post.rb:19: default_scope in a class body isn't supported yet"
     ], app.diagnostics.problems
     assert_includes generated["src/models/post.rs"], ".validates(\"title\", Check::Length"
