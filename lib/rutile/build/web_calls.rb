@@ -146,6 +146,11 @@ module Rutile
         when "[]"
           key = symbol!(only(args, node), node)
           Code["#{receiver.rust}.value(#{Names.str(key)})", T::VALUE, hint: key]
+        when "fetch"
+          unsupported!(node, "fetch without a default") unless args.size == 2
+          key, default = args
+          Code["#{receiver.rust}.fetch(#{Names.str(symbol!(key, node))}, #{fetch_default(default, node)})", T::VALUE,
+               hint: key.unescaped]
         when "require" then Code["#{receiver.rust}.require(#{Names.str(symbol!(only(args, node), node))})?", T::PARAMS, hint: "params"]
         when "permit" then Code["#{receiver.rust}.permit(#{Names.str_slice(args.map { symbol!(_1, node) })})", T::ATTRIBUTES, hint: "attributes"]
         when "expect"
@@ -155,12 +160,24 @@ module Rutile
         end
       end
 
+      # What `fetch` gives back when the key is absent: a literal.
+      def fetch_default(node, at)
+        case node
+        when Prism::IntegerNode, Prism::TrueNode, Prism::FalseNode, Prism::StringNode, Prism::SymbolNode then expr(node).rust
+        when Prism::NilNode
+          @uses.rt("Value")
+          "Value::Nil"
+        else unsupported!(at, "a fetch default that isn't a literal")
+        end
+      end
+
       # A param value. `blank?` is Value's own; `present?` comes from Blank.
       def on_value(receiver, _node, name, args)
         return nil unless args.empty?
 
         case name
         when "to_s" then Code["#{receiver.rust}.to_ruby_string()", T::STR, receiver.ctx, hint: receiver.hint]
+        when "to_i" then Code["#{receiver.rust}.to_i()?", T::INT, receiver.ctx, hint: receiver.hint]
         when "nil?" then Code["#{receiver.rust}.is_nil()", T::BOOL, receiver.ctx]
         when "blank?" then Code["#{receiver.rust}.is_blank()", T::BOOL, receiver.ctx]
         when "present?"

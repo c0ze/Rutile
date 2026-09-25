@@ -19,6 +19,8 @@ module Rutile
       include WebCalls
       include ControlFlow
       include Expressions
+      include Constants
+      include Queries
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -112,7 +114,7 @@ module Rutile
 
           @lines << "Ok(#{code.rust})"
         else
-          @lines << (@result ? "Ok(#{owned(code)})" : owned(code))
+          @lines << (@result ? "Ok(#{owned(code, code.type)})" : owned(code, code.type))
         end
         code.type
       end
@@ -184,6 +186,7 @@ module Rutile
       def expr(node)
         case node
         when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
+        when Prism::InterpolatedStringNode then interpolation(node)
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::IntegerNode then Code[node.value.to_s, T::INT]
         when Prism::NilNode then Code["None", T::NIL]
@@ -221,16 +224,6 @@ module Rutile
         end
       end
 
-      def constant(node)
-        name = node.name.to_s
-        klass = { "Time" => T::TIME_CLASS, "Date" => T::DATE_CLASS }[name]
-        return Code[name, klass] if klass
-
-        unsupported!(node, "the constant #{name}") unless @app.model?(name)
-        use_model(name)
-        Code[name, T.klass(name)]
-      end
-
       def call(node)
         args = node.arguments&.arguments || []
         unsupported!(node, "a block passed to #{node.name}") if node.block
@@ -241,10 +234,12 @@ module Rutile
           args = args.drop(1)
         end
         return self_call(node, name, args) if node.receiver.nil?
-        operator = name == "!" || Expressions::COMPARE.include?(name)
+        return extremum(node, name) if node.receiver.is_a?(Prism::ArrayNode) && %w[max min].include?(name) && args.empty?
+        operator = name == "!" || (Expressions::COMPARE + Expressions::ARITHMETIC).include?(name)
         unsupported!(node, "&. with an operator") if operator && node.safe_navigation?
         return negate(expr(node.receiver), node) if name == "!" && args.empty?
         return compare(node, name, args.first) if Expressions::COMPARE.include?(name) && args.size == 1
+        return arithmetic(node, name, args.first) if Expressions::ARITHMETIC.include?(name) && args.size == 1
 
         receiver = expr(node.receiver)
         unsupported!(node, "a call chained after &.") if receiver.extra[:nav]

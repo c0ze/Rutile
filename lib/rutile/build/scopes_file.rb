@@ -52,10 +52,7 @@ module Rutile
       def lambda_scope(scope)
         path, line = scope["source"].values_at("path", "line")
         node = @app.source.block_at(path, line)
-        raise Unsupported.at(path, node, "a scope body that isn't a lambda") unless node.is_a?(Prism::LambdaNode)
-
-        names = parameters(node, path)
-        types = parameter_types(node, names, path)
+        names, types, = ScopeParameters.of(@app, @model, node, path)
         translator = Translator.new(@app, path, @uses, env: :scope, model: @model, result: false)
         # A Ruby name that's a Rust keyword becomes a raw identifier.
         rust = names.to_h { [_1, rust_name(_1)] }
@@ -74,42 +71,6 @@ module Rutile
         return name unless Translator::KEYWORDS.include?(name) || Translator::UNRAW.include?(name)
 
         Translator::UNRAW.include?(name) ? "#{name}_" : "r##{name}"
-      end
-
-      def parameters(node, path)
-        params = node.parameters&.parameters or return []
-        plain = params.optionals.empty? && params.posts.empty? && params.keywords.empty? &&
-                params.rest.nil? && params.keyword_rest.nil? && params.block.nil? &&
-                params.requireds.all?(Prism::RequiredParameterNode)
-        raise Unsupported.at(path, node, "scope parameters other than plain ones") unless plain
-
-        params.requireds.map { _1.name.to_s }
-      end
-
-      # A parameter compared with a column in `where` has the column's type.
-      def parameter_types(node, names, path)
-        types = {}
-        each_where_pair(node) do |column, value|
-          value = value.left if value.is_a?(Prism::RangeNode)
-          next unless value.is_a?(Prism::LocalVariableReadNode) && names.include?(value.name.to_s)
-
-          types[value.name.to_s] ||= @app.column_type(@model, column)
-        end
-        missing = names - types.compact.keys
-        raise Unsupported.at(path, node, "a scope parameter (#{missing.join(", ")}) not compared with a column") unless missing.empty?
-
-        types
-      end
-
-      def each_where_pair(node, &block)
-        if node.is_a?(Prism::CallNode) && node.name == :where
-          (node.arguments&.arguments || []).each do |arg|
-            next unless arg.is_a?(Prism::KeywordHashNode) || arg.is_a?(Prism::HashNode)
-
-            arg.elements.each { yield _1.key.unescaped, _1.value if _1.is_a?(Prism::AssocNode) && _1.key.is_a?(Prism::SymbolNode) }
-          end
-        end
-        node.compact_child_nodes.each { each_where_pair(_1, &block) }
       end
     end
 

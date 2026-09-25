@@ -17,6 +17,8 @@ module Rutile
         end
       end
 
+      def exist?(path) = File.file?(File.join(@root, path))
+
       # `def name` in the file at `path`.
       def def_node(path, name)
         defs(path).find { _1.name == name.to_sym } || raise(Error, "#{path}: no method #{name}")

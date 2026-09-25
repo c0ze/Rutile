@@ -71,7 +71,7 @@ module Rutile
 
       def cargo_toml
         runtime = Pathname(@runtime).relative_path_from(Pathname(File.expand_path(@out)))
-        <<~TOML
+        toml = <<~TOML
           [package]
           name = "#{@name}"
           version = "0.1.0"
@@ -81,6 +81,24 @@ module Rutile
           [dependencies]
           rustonrails = { path = "#{runtime}" }
         TOML
+        return toml if in_workspace?
+
+        toml + <<~TOML
+
+          # Ruby promotes an overflowing Integer to a Bignum. This crate panics
+          # (the server's 500) instead of wrapping, in release builds too.
+          [profile.release]
+          overflow-checks = true
+        TOML
+      end
+
+      # Cargo reads profiles from the workspace root only, and warns about a
+      # member's, so a crate inside a workspace leaves overflow-checks to it.
+      def in_workspace?
+        Pathname(File.expand_path(@out)).parent.ascend.any? do |dir|
+          manifest = dir.join("Cargo.toml")
+          manifest.file? && manifest.read.match?(/^\[workspace\]/)
+        end
       end
 
       def models_mod(models, record)
