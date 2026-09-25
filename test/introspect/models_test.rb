@@ -1,5 +1,6 @@
 require "uri"
 require_relative "../introspect_helper"
+require_relative "../../lib/rutile/introspect/models"
 
 class ModelsTest < Minitest::Test
   include IntrospectHelper
@@ -29,6 +30,15 @@ class ModelsTest < Minitest::Test
       ],
       model("Post")["associations"]
     )
+  end
+
+  # Rails keeps an association's `-> { ... }` outside its options.
+  def test_an_association_scope_is_recorded
+    reflection = Struct.new(:macro, :name, :class_name, :foreign_key, :options, :scope)
+    scoped = reflection.new(:has_many, :admins, "Membership", "user_id", {}, -> { where(role: "admin") })
+    assert_equal({ "scope" => true }, Rutile::Introspect::Models.association(scoped)["options"])
+    plain = reflection.new(:has_many, :admins, "Membership", "user_id", {}, nil)
+    assert_equal({}, Rutile::Introspect::Models.association(plain)["options"])
   end
 
   def test_validators_keep_their_options

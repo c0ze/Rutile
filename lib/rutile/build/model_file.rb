@@ -6,8 +6,9 @@ module Rutile
       ASSOCIATION_OPTIONS = %w[dependent class_name foreign_key optional inverse_of through source].freeze
 
       # has_many :through in the join-model shape: through a has_many on the
-      # owner, sourced from a belongs_to on the join model. [link, source],
-      # or nil for any other shape.
+      # owner, sourced from a belongs_to on the join model, with no scope on
+      # either and a join table that isn't the target's. [link, source], or
+      # nil for any other shape.
       def self.through_parts(app, model, assoc)
         options = assoc["options"]
         link = app.association(model, options["through"])
@@ -15,7 +16,11 @@ module Rutile
         return nil unless (options.keys - %w[through source]).empty?
 
         source = app.association(link["class_name"], options["source"] || assoc["name"].delete_suffix("s"))
-        source && source["macro"] == "belongs_to" ? [link, source] : nil
+        return nil unless source && source["macro"] == "belongs_to"
+        return nil if [link, source].any? { _1["options"]["scope"] }
+        return nil if app.model(link["class_name"])["table_name"] == app.model(assoc["class_name"])["table_name"]
+
+        [link, source]
       end
 
       def initialize(app, name)

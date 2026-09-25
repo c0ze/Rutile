@@ -36,13 +36,17 @@ module Rutile
         }
       end
 
+      # Rails keeps an association's `-> { ... }` outside its options; it goes
+      # in as "scope" so build refuses it like any option it doesn't know.
       def association(reflection)
+        options = Serialize.value(reflection.options)
+        options["scope"] = true if reflection.scope
         {
           "macro" => reflection.macro.to_s,
           "name" => reflection.name.to_s,
           "class_name" => reflection.class_name,
           "foreign_key" => reflection.foreign_key.to_s,
-          "options" => Serialize.value(reflection.options)
+          "options" => options
         }
       end
 

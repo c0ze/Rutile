@@ -131,7 +131,7 @@ module Rutile
           chain.(pairs(args, node).map { |column, value| where(model, column, value, node) }.join)
         when "order" then chain.(order(args, node))
         when "limit" then chain.(".limit(#{only(args, node).then { |n| n.is_a?(Prism::IntegerNode) ? n.value : unsupported!(n, "a non-literal limit") }})")
-        when "includes" then chain.(args.map { ".includes(&#{model}::#{Names.constant(symbol!(_1, node))})" }.join)
+        when "includes" then chain.(args.map { include_one(model, symbol!(_1, node), node) }.join)
         when "all" then receiver
         when "new", "build" then build_through(receiver, node, args)
         when "create", "create!"
@@ -142,6 +142,12 @@ module Rutile
         when "include?" then include_in(receiver, model, args, node)
         else scope_call(receiver, model, name, node, args)
         end
+      end
+
+      def include_one(model, name, node)
+        through = @app.association(model, name)&.dig("options", "through")
+        unsupported!(node, "including #{name} through #{through}") if through
+        ".includes(&#{model}::#{Names.constant(name)})"
       end
 
       def where(model, column, operand, node)

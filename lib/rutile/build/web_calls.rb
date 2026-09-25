@@ -106,6 +106,7 @@ module Rutile
         entries = hash ? pairs([value], node) : symbols(value, node).map { [_1, nil] }
         entries.map do |name, options|
           assoc = @app.association(model, name) or unsupported!(node, "including #{name}, which #{model} doesn't have")
+          (through = assoc["options"]["through"]) and unsupported!(node, "including #{name} through #{through}")
           method = assoc["macro"] == "has_many" ? "include_many" : "include"
           ".#{method}(&#{model}::#{Names.constant(name)}, #{as_json(assoc["class_name"], options, node)})"
         end.join
