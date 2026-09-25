@@ -47,10 +47,8 @@ module Rutile
       end
 
       def callbacks
-        dependents = @model["associations"].select { _1.dig("options", "dependent") }
-        dependents.each do |assoc|
-          @app.attempt { unsupported!("dependent: :#{assoc["options"]["dependent"]}") unless assoc["options"]["dependent"] == "destroy" }
-        end
+        # belongs_to's dependent: is an after_destroy, refused as any framework block.
+        dependents = @model["associations"].select { _1["macro"] == "has_many" && _1.dig("options", "dependent") }
         # Chains Behavior has no event for may only hold Rails' own entries.
         (@model["callbacks"].keys - EVENTS - ["validate"]).each do |event|
           @model["callbacks"][event].each { |entry| @app.attempt { refuse!(entry, "#{entry["kind"]}_#{event}") unless internal?(entry) } }
@@ -61,7 +59,7 @@ module Rutile
           ordered = chain.reject { _1["kind"] == "after" } + chain.select { _1["kind"] == "after" }.reverse
           ordered.flat_map { |entry| @app.attempt([]) { callback(event, entry, dependents) } }
         end
-        @app.attempt { unsupported!("a dependent: :destroy Rails didn't register") unless dependents.empty? }
+        @app.attempt { unsupported!("a dependent: option Rails didn't register") unless dependents.empty? }
         lines
       end
 
@@ -101,17 +99,21 @@ module Rutile
         end
       end
 
-      # Rails registers `dependent: :destroy` as an anonymous before_destroy
-      # at the association's place in the chain.
+      # Rails registers has_many's `dependent:` as an anonymous
+      # before_destroy at the association's place in the chain.
       def dependent_slot?(event, entry, dependents)
         event == "destroy" && entry["kind"] == "before" && entry["filter"]["origin"] == "framework" &&
           entry["filter"].key?("proc") && !dependents.empty?
       end
 
+      # :destroy runs each child's callbacks; :nullify is one UPDATE.
       def dependent(assoc)
+        kind = assoc["options"]["dependent"]
+        call = { "destroy" => "destroy_all", "nullify" => "nullify_all" }[kind]
+        unsupported!("dependent: :#{kind}") unless call
         const = "#{@name}::#{Names.constant(assoc["name"])}"
-        ["// has_many :#{assoc["name"]}, dependent: :destroy",
-         ".before_destroy(|ctx, #{@var}| #{const}.destroy_all(ctx, #{@var}))"]
+        ["// has_many :#{assoc["name"]}, dependent: :#{kind}",
+         ".before_destroy(|ctx, #{@var}| #{const}.#{call}(ctx, #{@var}))"]
       end
 
       def method_hook(entry, hook)
