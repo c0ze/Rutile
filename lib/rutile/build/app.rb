@@ -3,7 +3,7 @@ module Rutile
     # The manifest, looked up the way the emitters ask, plus the app's source.
     class App
       COLUMN_TYPES = { "integer" => T::INT, "bigint" => T::INT, "string" => T::STR, "text" => T::STR,
-                       "datetime" => T::TIME, "boolean" => T::BOOL, "float" => T::FLOAT }.freeze
+                       "datetime" => T::TIME, "date" => T::DATE, "boolean" => T::BOOL, "float" => T::FLOAT }.freeze
 
       attr_reader :root, :manifest, :source
 

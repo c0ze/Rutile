@@ -63,7 +63,7 @@ module Rutile
         lines, type = translator.body(node.body, :value)
         raise Unsupported.at(path, node, "a scope that doesn't return a relation") unless type.kind == :relation
 
-        @uses.rt("Time") if types.value?(T::TIME)
+        types.each_value { @uses.type(_1) }
         signature = "fn #{scope["name"]}(self#{names.map { ", #{rust[_1]}: #{types[_1].rust}" }.join})"
         ["#{signature} -> Self;", "// #{path}:#{line}\n#{signature} -> Self {\n#{lines.join("\n")}\n}"]
       end

@@ -238,6 +238,18 @@ module Rutile
         Code["now()", T::TIME]
       end
 
+      # `Date.current` is today in the app's zone, which the runtime takes to
+      # be UTC; `Date.today` is the machine's local date.
+      def on_date_class(_receiver, node, name, args)
+        return nil unless %w[current today].include?(name) && args.empty?
+
+        zone = @app.manifest.dig("config", "time_zone")
+        unsupported!(node, "Date.current with config.time_zone #{zone}") if name == "current" && zone != "UTC"
+        function = name == "current" ? "today" : "local_today"
+        @uses.rt(function)
+        Code["#{function}()", T::DATE]
+      end
+
       def on_str(receiver, _node, name, args)
         return nil unless args.empty?
 

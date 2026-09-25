@@ -223,7 +223,8 @@ module Rutile
 
       def constant(node)
         name = node.name.to_s
-        return Code["Time", T::TIME_CLASS] if name == "Time"
+        klass = { "Time" => T::TIME_CLASS, "Date" => T::DATE_CLASS }[name]
+        return Code[name, klass] if klass
 
         unsupported!(node, "the constant #{name}") unless @app.model?(name)
         use_model(name)

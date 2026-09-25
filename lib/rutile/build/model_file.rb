@@ -95,7 +95,7 @@ module Rutile
 
       def field_type(column)
         type = @app.column_type(@name, column["name"])
-        @uses.rt("Time") if type == T::TIME
+        @uses.type(type)
         type.rust
       end
 
@@ -114,6 +114,8 @@ module Rutile
         when "float" then " = #{Float(default)}"
         when "boolean" then " = #{default == "true"}"
         when "string", "text" then " = #{Names.str(default)}"
+        # INSERT writes every column, so a dropped default would be NULL.
+        when "date" then raise Unsupported, "#{@path}: the default #{default} on the date column #{column["name"]} isn't supported yet"
         else ""
         end
       end

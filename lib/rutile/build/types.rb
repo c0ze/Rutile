@@ -4,7 +4,7 @@ module Rutile
     # a record, relation or errors; `inner` is what a nilable wraps.
     Type = Data.define(:kind, :model, :inner) do
       def nilable? = kind == :nilable
-      def copy? = %i[record int float bool time].include?(kind) || (nilable? && inner.copy?)
+      def copy? = %i[record int float bool time date].include?(kind) || (nilable? && inner.copy?)
 
       # How the type is spelled in a Rust signature or struct field.
       def rust
@@ -12,7 +12,7 @@ module Rutile
         when :record then "Handle<#{model}>"
         when :relation then "Relation<#{model}>"
         when :nilable then "Option<#{inner.rust}>"
-        else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", value: "Value", json: "Json",
+        else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", date: "Date", value: "Value", json: "Json",
                attributes: "Attributes", unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
         end
       end
@@ -44,6 +44,8 @@ module Rutile
       QUERY = self[:query]
       JSON_OPT = self[:json_opt]
       TIME_CLASS = self[:time_class]
+      DATE = self[:date]
+      DATE_CLASS = self[:date_class]
       HEADERS = self[:headers]
       NIL = self[:nil]
       COND = self[:cond]
@@ -80,7 +82,7 @@ module Rutile
           rt(type.kind == :record ? "Handle" : "Relation")
           model(type.model)
         when :nilable then self.type(type.inner)
-        when :attributes, :value, :json, :time then rt(type.rust)
+        when :attributes, :value, :json, :time, :date then rt(type.rust)
         end
       end
 

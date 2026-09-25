@@ -3,7 +3,7 @@ module Rutile
     # Ruby's everyday operators. Each keeps Ruby's meaning or is refused.
     module Expressions
       COMPARE = %w[== != < <= > >=].freeze
-      ORDERED = %i[int float str time].freeze
+      ORDERED = %i[int float str time date].freeze
 
       private
 
