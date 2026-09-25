@@ -16,7 +16,7 @@ Conventions:
 
 | Key | Meaning |
 |---|---|
-| `manifest_version` | format version, currently 2 |
+| `manifest_version` | format version, currently 3 |
 | `rails_version`, `ruby_version` | what the app booted with |
 | `config` | the settings below |
 | `gems` | the Gemfile's direct dependencies (below) |
@@ -69,6 +69,12 @@ Every non-abstract Active Record model whose class is defined under `app/`, sort
 }
 ```
 
+`normalizations` maps each attribute given `normalizes` to its normalizer (usually `{"proc": <location>}`) and `apply_to_nil`, sorted by attribute:
+
+```json
+"normalizations": {"email": {"with": {"proc": {"path": "app/models/user.rb", "line": 8}}, "apply_to_nil": false}}
+```
+
 `attributes` maps every attribute Active Record knows to its type name, sorted, including ones declared with `attribute` that have no column. Enum attributes report their stored type (`integer`).
 
 Validators include the ones Rails adds for you: `belongs_to` adds a `presence` validator with `message: "required"` and a framework condition (`{"proc": null}`), and `enum ..., validate: true` adds an `inclusion` validator.
@@ -88,6 +94,8 @@ Keyed by event (`save`, `create`, `validation`, `destroy`, ...), each a list in 
 ```
 
 A filter is a method (`{"method", "origin", "source"}`), a block (`{"proc", "origin"}`) or an object (`{"object", "origin"}`). `origin` is `app` for code inside the app, `framework` for Rails or gems, `missing` for a method name nobody defines.
+
+`has_secure_token` registers a framework block (an `after` on `initialize` by default since Rails 7.1, a `before` on `create` with `on: :create`) whose attribute and length exist only in the block's closure, so its filter also carries them: `{"proc": null, "origin": "framework", "secure_token": {"attribute": "api_token", "length": 24}}`.
 
 Validators run as `validate` callbacks, interleaved with `validate :method` calls, and the order changes which errors appear first. So the `validate` chain keeps a slot for each validator that points into the model's `validators` list, which is itself in run order:
 

@@ -6,7 +6,8 @@ module Rutile
     module Declarations
       VISIBILITY = %w[private protected public].freeze
       CALLBACKS = %w[validation save create update destroy].flat_map { ["before_#{_1}", "after_#{_1}"] }
-      MODEL = (%w[belongs_to has_many validates validate enum scope primary_abstract_class] + CALLBACKS).freeze
+      MODEL = (%w[belongs_to has_many validates validate enum scope primary_abstract_class normalizes has_secure_token] +
+               CALLBACKS).freeze
       CONTROLLER = %w[before_action skip_before_action rescue_from wrap_parameters attr_reader].freeze
 
       module_function

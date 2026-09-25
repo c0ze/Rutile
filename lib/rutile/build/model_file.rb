@@ -30,6 +30,7 @@ module Rutile
         @path = app.model_path(name)
         @uses = Uses.new
         @hooks = []
+        @normalizers = []
         @exports = [name]
       end
 
@@ -54,6 +55,9 @@ module Rutile
 
       # A method the Behavior chain names, to be translated into `impl`.
       def hook(method) = (@hooks << method unless @hooks.include?(method))
+
+      # The normalizer function the Behavior chain names.
+      def normalizer(attribute, options) = @normalizers << ModelMacros.translate(@app, @name, attribute, options, @uses)
 
       # A callback block as a closure; it coerces to the `Hook` fn pointer.
       def closure(block)
@@ -130,7 +134,7 @@ module Rutile
       end
 
       def impl_block
-        items = associations + enum_predicates + methods
+        items = associations + enum_predicates + @normalizers + methods
         items.empty? ? nil : "impl #{@name} {\n#{items.join("\n\n")}\n}"
       end
 

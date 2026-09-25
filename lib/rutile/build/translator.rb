@@ -177,7 +177,7 @@ module Rutile
           what = value.type.nilable? ? "a value that may be nil" : "#{describe(value.type)} on #{attribute}"
           unsupported!(node, "||= with #{what}")
         end
-        assignment = [*@lines, "#{field} = Some(#{owned(value, type)});"]
+        assignment = [*@lines, "#{field} = #{assigned(@model, attribute, type, value)};"]
         @lines = saved
         falsy = type == T::BOOL ? "!#{field}.unwrap_or(false)" : "#{field}.is_none()"
         @lines.push("if #{falsy} {", *assignment, "}")

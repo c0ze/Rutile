@@ -11,7 +11,7 @@ module Rutile
     # Assembles the manifest. Every section comes out in a fixed order so two
     # runs over the same app produce byte-identical JSON.
     module Manifest
-      VERSION = 2
+      VERSION = 3
 
       module_function
 

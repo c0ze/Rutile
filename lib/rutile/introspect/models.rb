@@ -31,6 +31,7 @@ module Rutile
           "associations" => model.reflect_on_all_associations.map { association(_1) },
           "validators" => validators.map { validator(_1) },
           "enums" => model.defined_enums.sort.to_h { |name, mapping| [name, mapping.to_h] },
+          "normalizations" => normalizations(model),
           "callbacks" => callbacks(model, validators),
           "scopes" => ScopeRecorder.scopes_for(model)
         }
@@ -48,6 +49,17 @@ module Rutile
           "foreign_key" => reflection.foreign_key.to_s,
           "options" => options
         }
+      end
+
+      # `normalizes :email, with: ...`: Rails wraps the attribute's type in
+      # a NormalizedValueType holding the normalizer.
+      def normalizations(model)
+        return {} unless model.respond_to?(:normalized_attributes)
+
+        model.normalized_attributes.map(&:to_s).sort.to_h do |name|
+          type = model.type_for_attribute(name)
+          [name, { "with" => Serialize.value(type.normalizer), "apply_to_nil" => type.normalize_nil? }]
+        end
       end
 
       def validator(validator)

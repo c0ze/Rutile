@@ -24,7 +24,7 @@ module Rutile
           { "method" => value.to_s, "origin" => method_origin(owner, value, source), "source" => source }
         when Proc
           source = Source.location(*value.source_location)
-          { "proc" => source, "origin" => source ? "app" : "framework" }
+          { "proc" => source, "origin" => source ? "app" : "framework", **secure_token(value) }
         else
           { "object" => value.class.name, "origin" => Source.app_defined?(value.class) ? "app" : "framework" }
         end
@@ -40,6 +40,18 @@ module Rutile
             filter(condition, owner)
           end
         end
+      end
+
+      # has_secure_token's callback keeps its attribute and length only in
+      # the block's closure.
+      def secure_token(block)
+        return {} unless block.source_location&.first&.end_with?("/active_record/secure_token.rb")
+
+        binding = block.binding
+        { "secure_token" => { "attribute" => binding.local_variable_get(:attribute).to_s,
+                              "length" => binding.local_variable_get(:length) } }
+      rescue NameError, ArgumentError
+        {}
       end
 
       def method_origin(owner, name, source)

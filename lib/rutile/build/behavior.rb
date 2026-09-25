@@ -23,9 +23,34 @@ module Rutile
         @var = Names.snake(name)
       end
 
-      def lines = unvalidated_enums + validations + callbacks
+      def lines = normalizations + other_chains + unvalidated_enums + validations + callbacks
 
       private
+
+      # Normalizers run on assignment and in queries, outside the chains.
+      def normalizations
+        (@model["normalizations"] || {}).flat_map do |attribute, options|
+          @app.attempt([]) do
+            @file.normalizer(attribute, options)
+            ["// normalizes :#{attribute}", ".normalizes(#{Names.str(attribute)}, #{@name}::#{ModelMacros.function(attribute)})"]
+          end
+        end
+      end
+
+      # Chains Behavior has no event for may only hold Rails' own entries,
+      # and has_secure_token's on initialize.
+      def other_chains
+        (@model["callbacks"].keys - EVENTS - ["validate"]).flat_map do |event|
+          @model["callbacks"][event].flat_map do |entry|
+            @app.attempt([]) do
+              next ModelMacros.token(entry, event, @path, @var) if entry.dig("filter", "secure_token")
+
+              refuse!(entry, "#{entry["kind"]}_#{event}") unless internal?(entry)
+              []
+            end
+          end
+        end
+      end
 
       # Enums without `validate: true` add no validator, so they go first.
       def unvalidated_enums
@@ -49,10 +74,6 @@ module Rutile
       def callbacks
         # belongs_to's dependent: is an after_destroy, refused as any framework block.
         dependents = @model["associations"].select { _1["macro"] == "has_many" && _1.dig("options", "dependent") }
-        # Chains Behavior has no event for may only hold Rails' own entries.
-        (@model["callbacks"].keys - EVENTS - ["validate"]).each do |event|
-          @model["callbacks"][event].each { |entry| @app.attempt { refuse!(entry, "#{entry["kind"]}_#{event}") unless internal?(entry) } }
-        end
         # Rails prepends after-callbacks, so they run in reverse chain order.
         lines = EVENTS.flat_map do |event|
           chain = @model.dig("callbacks", event) || []
@@ -71,6 +92,8 @@ module Rutile
         hook = "#{entry["kind"]}_#{event}"
         unsupported!("around_#{event} callbacks") if entry["kind"] == "around" && filter["origin"] == "app"
         return app_method!(entry, hook) && method_hook(entry, hook) if filter.key?("method")
+
+        return ModelMacros.token(entry, event, @path, @var) if filter["secure_token"]
 
         refuse!(entry, hook) unless filter["origin"] == "app"
         where = "#{filter.dig("proc", "path")}:#{filter.dig("proc", "line")}"

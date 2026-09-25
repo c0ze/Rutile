@@ -32,8 +32,18 @@ module Rutile
           unsupported!(node, "assigning #{describe(value.type)} to #{attribute}")
         end
         receiver, value = settle([receiver, value], :write)
-        assigned = value.type.nilable? || value.type == T::NIL ? owned(value) : "Some(#{owned(value, type)})"
-        Code["#{ctx_recv}[#{receiver.rust}].#{attribute} = #{assigned}", T::UNIT, :write]
+        Code["#{ctx_recv}[#{receiver.rust}].#{attribute} = #{assigned(receiver.type.model, attribute, type, value)}", T::UNIT, :write]
+      end
+
+      # A value for an attribute field, normalized as the attribute writer
+      # would.
+      def assigned(model, attribute, type, value)
+        normalize = ModelMacros.normalizer(@app, model, attribute)
+        use_model(model) if normalize
+        return "None" if value.type == T::NIL
+        return (normalize ? "#{owned(value)}.map(#{normalize})" : owned(value)) if value.type.nilable?
+
+        normalize ? "Some(#{normalize}(#{owned(value, type)}))" : "Some(#{owned(value, type)})"
       end
 
       def association(receiver, model, assoc, node)

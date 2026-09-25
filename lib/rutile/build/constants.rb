@@ -7,7 +7,7 @@ module Rutile
     # ApplicationRecord's. Each one read becomes a Rust `const` in the file.
     module Constants
       PARENTS = { controller: "app/controllers/application_controller.rb", model: "app/models/application_record.rb",
-                  scope: "app/models/application_record.rb" }.freeze
+                  scope: "app/models/application_record.rb", normalizer: "app/models/application_record.rb" }.freeze
 
       private
 

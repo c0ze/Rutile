@@ -44,6 +44,7 @@ module Rutile
 
       def association(name, assoc) = model(name)["associations"].find { _1["name"] == assoc.to_s }
       def enum(name, attribute) = model(name)["enums"][attribute.to_s]
+      def normalization(name, attribute) = (model(name)["normalizations"] || {})[attribute.to_s]
 
       # `draft?` → ["status", "draft"] when it's an enum predicate.
       def enum_predicate(name, method)
