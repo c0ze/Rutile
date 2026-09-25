@@ -51,11 +51,11 @@ module Rutile
         # The owner is named once: `build` uses it again.
         receiver = local!(receiver) if impure?(receiver) || receiver.reads?
         if assoc["options"]["through"]
-          unless ModelFile.through_parts(@app, model, assoc)
-            unsupported!(node, "has_many :#{assoc["name"]} through #{assoc["options"]["through"]} in this shape")
-          end
+          link, = ModelFile.through_parts(@app, model, assoc)
+          unsupported!(node, "has_many :#{assoc["name"]} through #{assoc["options"]["through"]} in this shape") unless link
+          joined = { @app.model(link["class_name"])["table_name"] => link["class_name"] }
           return Code["#{const}.of(#{ctx_ref}, #{receiver.rust})", T.relation(target), :read, hint: assoc["name"],
-                      through: assoc["name"]]
+                      through: assoc["name"], joined:]
         end
         Code["#{const}.of(#{ctx_ref}, #{receiver.rust})", T.relation(target), :read, hint: assoc["name"],
              via: [receiver.rust, model, assoc["name"]]]
@@ -123,14 +123,15 @@ module Rutile
         if (through = receiver.extra[:through]) && %w[new build create create! includes].include?(name)
           unsupported!(node, "#{name} through has_many :#{through}")
         end
-        chain = ->(rust) { Code["#{receiver.rust}#{rust}", T.relation(model), receiver.ctx, hint: receiver.hint] }
+        chain = ->(rust) { relation(receiver, "#{receiver.rust}#{rust}") }
         case name
         when "where"
           return Code[receiver.rust, T.where_chain(model), receiver.ctx, hint: receiver.hint] if args.empty?
 
-          chain.(pairs(args, node).map { |column, value| where(model, column, value, node) }.join)
+          where_pairs(receiver, model, args, node)
         when "order" then chain.(order(args, node))
-        when "limit" then chain.(".limit(#{only(args, node).then { |n| n.is_a?(Prism::IntegerNode) ? n.value : unsupported!(n, "a non-literal limit") }})")
+        when "limit", "offset" then paginate(receiver, name, args, node)
+        when "joins" then joins(receiver, model, args, node)
         when "includes" then chain.(args.map { include_one(model, symbol!(_1, node), node) }.join)
         when "all" then receiver
         when "new", "build" then build_through(receiver, node, args)
@@ -144,48 +145,13 @@ module Rutile
         end
       end
 
-      def include_one(model, name, node)
-        through = @app.association(model, name)&.dig("options", "through")
-        unsupported!(node, "including #{name} through #{through}") if through
-        ".includes(&#{model}::#{Names.constant(name)})"
-      end
-
-      def where(model, column, operand, node)
-        if operand.is_a?(Prism::RangeNode)
-          unsupported!(node, "a where range other than `x..`") unless operand.left && operand.right.nil? && !operand.exclude_end?
-          bound = value(operand.left)
-          unsupported!(node, "a where range from a value that may be nil") if bound.type.nilable?
-          return ".where_gte(#{Names.str(column)}, #{owned(bound)})"
-        end
-        unsupported!(node, "where on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
-        code = value(operand)
-        if code.type == T::NIL
-          @uses.rt("Value")
-          return ".where_eq(#{Names.str(column)}, Value::Nil)"
-        end
-        unsupported!(node, "where with #{describe(code.type)}") if code.type.nilable? || code.reads?
-        ".where_eq(#{Names.str(column)}, #{owned(code)})"
-      end
-
-      def order(args, node)
-        args.flat_map do |arg|
-          next [".order_asc(#{Names.str(symbol!(arg, node))})"] if arg.is_a?(Prism::SymbolNode)
-
-          pairs([arg], node).map do |column, direction|
-            dir = symbol!(direction, node)
-            unsupported!(node, "order direction :#{dir}") unless %w[asc desc].include?(dir)
-            ".order_#{dir}(#{Names.str(column)})"
-          end
-        end.join
-      end
-
       def scope_call(receiver, model, name, node, args)
         scope = @app.scope(model, name) or return nil
         path = scope.dig("source", "path")
         trait = path == Scopes::APPLICATION_RECORD ? "ApplicationRecordScopes" : "#{model}Scopes"
         use_model(trait) unless trait == "#{@model}Scopes" && %i[model scope].include?(@env)
         values = args.map { owned(value(_1)) }
-        Code["#{receiver.rust}.#{name}(#{values.join(", ")})", T.relation(model), receiver.ctx, hint: receiver.hint]
+        relation(receiver, "#{receiver.rust}.#{name}(#{values.join(", ")})")
       end
 
       # `@post.comments.new(attributes)`: a child pointing at its owner.

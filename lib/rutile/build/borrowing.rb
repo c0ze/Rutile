@@ -73,6 +73,21 @@ module Rutile
         end
       end
 
+      # Evaluates what Ruby evaluates after `receiver`, a call's arguments.
+      # If that ran statements or writes the Ctx, the receiver becomes a
+      # local first, so it reads the Ctx before they run. Returns the
+      # receiver and the block's result, whose Codes are checked for writes.
+      def after(receiver)
+        mark = @lines.size
+        result = yield
+        writes = [result].flatten.any? { _1.is_a?(Code) && _1.writes? }
+        return [receiver, result] unless receiver.reads? && (writes || @lines.size > mark)
+
+        name = fresh(receiver.hint || "value")
+        @lines.insert(mark, "let #{name} = #{receiver.rust};")
+        [Code[name, receiver.type, hint: receiver.hint, **receiver.extra.except(:literal, :local, :safe, :nav)], result]
+      end
+
       # Fallible (`?`) or writing: running it later, or twice, would differ.
       def impure?(code) = code.writes? || code.rust.include?("?")
 
