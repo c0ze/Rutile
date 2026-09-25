@@ -62,4 +62,13 @@ class ConstantsTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { posts(app) }
     assert_includes error.message, "LIMIT, a constant that isn't an integer, string or boolean"
   end
+
+  # A helper returns an owned String: `Ok(MISSING.to_string())`.
+  def test_a_helper_returning_a_string_constant
+    app = scratch_app({ "app/controllers/posts_controller.rb" => lambda do |ruby|
+      with_message(ruby).sub("render json: @post\n", "render json: { error: missing }\n")
+                        .sub(/^end\n\z/, "\n  def missing = MISSING\nend\n")
+    end })
+    assert_rust_includes posts(app), "Ok(MISSING.to_string())"
+  end
 end

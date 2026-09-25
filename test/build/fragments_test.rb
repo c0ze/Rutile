@@ -49,4 +49,9 @@ class FragmentsTest < Minitest::Test
     refused("passing int to scope :search's query (str)") { translate("found = Task.search(1)") }
     refused("interpolating int or nil") { translate('found = Task.where("title = ?", "#{estimate}")') }
   end
+
+  # `.into()` binds tighter than `-`, so an arithmetic bind keeps its parentheses.
+  def test_an_arithmetic_bind_keeps_its_grouping
+    assert_rust_includes translate('found = Task.where("estimate > ?", 3 - 1)'), "vec![(3 - 1).into()]"
+  end
 end

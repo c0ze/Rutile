@@ -145,7 +145,7 @@ module Rutile
         unsupported!(node, "a SQL fragment with $") if sql.include?("$")
         receiver, codes = after(receiver) { in_order(binds) { value(_1) } }
         codes.each { bindable!(_1, node, "a SQL bind") }
-        list = codes.map { "#{where_value(_1)}.into()" }
+        list = codes.map { "#{atom(where_value(_1), _1)}.into()" }
         relation(receiver, "#{receiver.rust}.where_sql(#{Names.str(sql)}, vec![#{list.join(", ")}])", *codes)
       end
 

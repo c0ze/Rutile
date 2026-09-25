@@ -56,4 +56,12 @@ class NumbersTest < Minitest::Test
     toml = Rutile::Build::Crate.new(app, Dir.mktmpdir, name: "x", runtime: "/tmp/rustonrails").send(:cargo_toml)
     assert_includes toml, "[profile.release]\noverflow-checks = true\n"
   end
+
+  # Cargo reads profiles from the workspace root only, and warns about a member's.
+  def test_a_crate_inside_a_workspace_leaves_the_profile_to_the_workspace
+    root = Dir.mktmpdir
+    File.write(File.join(root, "Cargo.toml"), "[workspace]\nmembers = [\"app\"]\n")
+    toml = Rutile::Build::Crate.new(app, File.join(root, "app"), name: "x", runtime: "/tmp/rustonrails").send(:cargo_toml)
+    refute_includes toml, "[profile.release]"
+  end
 end

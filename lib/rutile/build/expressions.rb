@@ -80,6 +80,10 @@ module Rutile
         loose || code.rust.start_with?("if ") ? "(#{code.rust})" : code.rust
       end
 
+      # `rust` as the receiver of a method call, which binds tighter than
+      # an operator or an `if`.
+      def atom(rust, code) = code.extra[:arith] || rust.start_with?("if ") ? "(#{rust})" : rust
+
       # `[a, b].max`: Integers only; Ruby raises comparing nil.
       def extremum(node, name)
         elements = node.receiver.elements

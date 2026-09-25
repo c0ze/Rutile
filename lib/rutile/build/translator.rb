@@ -114,7 +114,7 @@ module Rutile
 
           @lines << "Ok(#{code.rust})"
         else
-          @lines << (@result ? "Ok(#{owned(code)})" : owned(code))
+          @lines << (@result ? "Ok(#{owned(code, code.type)})" : owned(code, code.type))
         end
         code.type
       end
