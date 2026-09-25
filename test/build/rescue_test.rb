@@ -52,11 +52,27 @@ class RescueTest < Minitest::Test
                          "pub fn invalid(_req: &mut Request, _error: RecordInvalid) -> Result<Response> {"
   end
 
-  # Ruby may read the local again, so it's a copy.
+  # Ruby may read the local again, so it's a copy; so is its record, which
+  # in Rust is the RecordInvalid that carries its errors.
   def test_the_exception_in_a_local
-    ruby = "def invalid(error)\n  failed = error\n  render json: failed.record.errors, status: 422\nend"
+    ruby = "def invalid(error)\n  failed = error\n  record = error.record\n" \
+           "  render json: { errors: record.errors, again: failed.record.errors }, status: 422\nend"
     assert_rust_includes application(invalid_as(ruby)),
-                         "let failed = error.clone(); Ok(Response::json(422, errors_json(&failed.errors)))"
+                         "let failed = error.clone(); let record = error.clone(); Ok(Response::json(422, " \
+                         'json!({ "errors": errors_json(&record.errors), "again": errors_json(&failed.errors) })))'
+  end
+
+  # In the controller's own handler, an instance variable can hold it.
+  def test_the_exception_in_an_instance_variable
+    manifest = JSON.parse(JSON.generate(TrackerHelper.manifest))
+    users = manifest["controllers"].find { _1["name"] == "UsersController" }
+    users["rescue_handlers"].last["handler"].merge!("method" => "rejected", "source" => { "path" => "app/controllers/users_controller.rb", "line" => 1 })
+    handler = "  def rejected(error)\n    @invalid = error.record\n    render json: @invalid.errors, status: 422\n  end\n"
+    add = ->(ruby) { ruby.sub(/^end\s*\z/, "\n  private\n\n#{handler}end\n") }
+    app = scratch_app({ "app/controllers/users_controller.rb" => add }, manifest:, from: TrackerHelper::APP)
+    rust = Rutile::Build::ControllerFile.new(app, "UsersController").to_rust
+    assert_rust_includes rust, "invalid: Option<RecordInvalid>,"
+    assert_match(/^use rustonrails::\{.*\bRecordInvalid\b.*\};$/, rust)
   end
 
   # The same method in this controller's own file is a method, not a function.

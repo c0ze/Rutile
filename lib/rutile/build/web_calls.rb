@@ -198,7 +198,7 @@ module Rutile
       # A rescue handler's RecordInvalid. It carries the invalid record's
       # errors, which is all of the record a handler can read.
       def on_record_invalid(receiver, _node, name, args)
-        Code[receiver.rust, T::INVALID_RECORD] if name == "record" && args.empty?
+        Code[receiver.rust, T::INVALID_RECORD, receiver.ctx, **receiver.extra] if name == "record" && args.empty?
       end
 
       def on_invalid_record(receiver, _node, name, args)
