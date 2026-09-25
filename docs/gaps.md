@@ -2,7 +2,7 @@
 
 [examples/tracker](../examples/tracker) is a project and task tracker written as an ordinary Rails 8 API: token auth in `ApplicationController`, `has_many :through`, several enums, numericality and scoped uniqueness, a `date` column, SQL-string scopes, member routes, pagination, `create!`/`update!` with `rescue_from RecordInvalid`. Its 24 integration tests pass on Rails (`bundle exec rake example:test EXAMPLE=tracker`).
 
-`rutile check` on it reports 15 problems ([tracker-check.txt](tracker-check.txt), after plan 9b): 28 before plan 8, 18 after it. The count is a floor. Each unit reports only its first problem, and actions behind a failed filter are skipped. Each fix below surfaces more findings until the tracker compiles.
+`rutile check` on it reports 13 problems ([tracker-check.txt](tracker-check.txt), after plan 10): 28 before plan 8, 18 after it, 15 after plan 9b. The count is a floor. Each unit reports only its first problem, and actions behind a failed filter are skipped. Each fix below surfaces more findings until the tracker compiles.
 
 ## Done
 
@@ -21,6 +21,16 @@ Plan 9b (`docs/superpowers/plans/2026-09-25-has-many-through.md`):
 - `find` and `include?` on any relation.
 - `set_project` and `set_task`'s finder now pass, which exposed three findings further down the tracker's actions (`limit(PER_PAGE)`, `archive!`, `map` with a block).
 
+Plan 10 (`docs/superpowers/plans/2026-09-25-queries-and-numbers.md`):
+
+- Class-body constants become Rust `const`s, looked up as Ruby does: the method's own class, then ApplicationController or ApplicationRecord.
+- `+`, `-` and `*` on Integers and Floats. Generated crates build with `overflow-checks` in release too, so an overflow is a 500 where Ruby would make a Bignum, never a wrapped number.
+- `[a, b].max` and `.min`, `params.fetch(:key, default)`, and `to_i` with Ruby's parsing.
+- `limit` and `offset` with any Integer expression.
+- `joins` along belongs_to and has_many, and `where` on a joined table's columns (including a has_many :through's join table).
+- SQL fragments with `?` binds, string interpolation, and `sanitize_sql_like`. A scope's arguments are checked against its parameters; a param value passed where a String is wanted must be one.
+- `set_task` now compiles, so the member actions behind it are read: `complete` exposed `done!`.
+
 ## Ranked
 
 Ranked by how common the construct is in Rails apps, then by how much of the tracker it unlocks. "Findings" counts lines in the report. Plan 9a (branch `tracker-gaps-2a`) is taking validators, `date` columns, dirty tracking in conditions, rescue handlers that take the exception, and `dependent: :nullify`.
@@ -36,37 +46,27 @@ Ranked by how common the construct is in Rails apps, then by how much of the tra
 - `normalizes :email, with: ...`.
 - RustOnRails: a token generator on create, and normalization applied on assignment (Behavior entries). Rutile: map them from the class body; the `with:` lambda is Ruby Rutile can translate.
 
-### 3. The query API (2 findings, more hidden)
+### 3. Model methods called from anywhere (2 findings, more hidden)
 
-- `joins(project: :memberships).where(memberships: { user_id: ... })`, which needs join SQL from association metadata. RustOnRails' `join_through` covers one hop; this is two.
-- A SQL fragment with binds: `where("title ILIKE ?", "%#{sanitize_sql_like(query)}%")`. This needs `Relation::where_sql` and string interpolation; the scope's parameter type comes from the bind.
-- Hidden: `offset`.
+`@project.archive!` and `@task.done!` (an enum bang method) are the findings; `task.overdue?` is behind the `map` block. All three are called from controllers, so they aren't callbacks. The tracker's methods take no arguments, so their return types can be inferred from their bodies. Methods with arguments need the design's rbs-inline signatures (Types, layer 3). Rutile: model methods become `impl Model { pub fn ... }` taking `&mut Ctx` and a handle. Enum bang methods come from the manifest.
 
-### 4. Model methods called from anywhere (1 finding, more hidden)
-
-`@project.archive!`, `task.overdue?` and `@task.done!` (an enum bang method) are called from controllers, so they aren't callbacks. The tracker's methods take no arguments, so their return types can be inferred from their bodies. Methods with arguments need the design's rbs-inline signatures (Types, layer 3). Rutile: model methods become `impl Model { pub fn ... }` taking `&mut Ctx` and a handle. Enum bang methods come from the manifest.
-
-### 5. Numbers, constants and small helpers (1 finding, more hidden)
-
-`limit(PER_PAGE)` is the finding. Behind it: `(page - 1) * PER_PAGE`, `[a, b].max`, and `params.fetch(:page, 1).to_i`. Ruby integers don't overflow; the design wants checked i64 arithmetic that fails loudly. Rutile: arithmetic on `INT`/`FLOAT` through checked helpers, and class constants as Rust `const`s.
-
-### 6. `date` columns (1 finding)
+### 4. `date` columns (1 finding)
 
 `due_on`. RustOnRails: a `Date` type (chrono `NaiveDate`) with `FromValue`, SQL and JSON (`"2026-09-25"`), and `Date.current`. Rutile: the column type and `Date.current`.
 
-### 7. Blocks and hashes over records (1 finding)
+### 5. Blocks and hashes over records (1 finding)
 
 `tasks.map { |task| task.as_json.merge("overdue" => task.overdue?) }`. Rutile: `map` with a block over loaded records into a `Vec`, and JSON values built with `merge`.
 
-### 8. Dirty tracking in conditions (1 finding)
+### 6. Dirty tracking in conditions (1 finding)
 
 `before_save ..., if: :will_save_change_to_status?`. `will_save_change_to_x?` maps to RustOnRails' `attribute_changed`. `saved_change_to_x?` is different: it describes the last save, which the runtime doesn't track yet.
 
-### 9. Rescue handlers that take the exception (1 finding)
+### 7. Rescue handlers that take the exception (1 finding)
 
 `def invalid(error) = render json: error.record.errors, ...`. RustOnRails: `Error::RecordInvalid` carries the record's `Errors`, not only messages. Rutile: a handler parameter typed as the exception.
 
-### 10. `dependent: :nullify` (1 finding)
+### 8. `dependent: :nullify` (1 finding)
 
 `User#assigned_tasks`. RustOnRails: a nullify step next to `destroy_all` (an `UPDATE ... SET fk = NULL`). Rutile: the Behavior entry, the same slot `dependent: :destroy` uses.
 
