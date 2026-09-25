@@ -9,8 +9,6 @@ PG_PORT = ENV.fetch("BLOG_DB_PORT", "54329")
 EXAMPLE = ENV.fetch("EXAMPLE", "blog")
 EXAMPLE_APP = File.expand_path("../examples/#{EXAMPLE}", __dir__)
 
-# Only the blog has a benchmark so far: the tracker's routes want a token.
-def blog_only! = (abort "only the blog has a benchmark (EXAMPLE=#{EXAMPLE})" unless EXAMPLE == "blog")
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze

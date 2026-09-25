@@ -1,27 +1,41 @@
+require "net/http"
+require "shellwords"
 require_relative "../lib/rutile/unbundled"
 require_relative "support/servers"
 
 # Rails (Puma) and the Rust port on the same database and rows, measured
 # with RustOnRails' `loadgen`: requests per second, p50/p99 latency, and
-# resident memory.
+# memory. Before anything is measured, every endpoint must give the same
+# status and body on both servers.
+#
+#   EXAMPLE=blog|tracker  the app (blog by default)
+#   RAILS_WORKERS=N       Puma in cluster mode, N processes (default: one process)
+#   RAILS_YJIT=0          Rails on the interpreter (default: YJIT, which Rails 7.2+ turns on)
+#   RUNS=N                measured runs per endpoint and server (default 1)
 namespace :example do
   desc "Benchmark the example app on Rails and on the Rust port"
   task benchmark: :build do
-    blog_only!
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
-    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog", "-p", "loadgen" }
+    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE, "-p", "loadgen" }
     loadgen = File.join(rust, "target/release/loadgen")
-    seed_posts
+    bench = BENCHMARKS.fetch(EXAMPLE) { abort "no benchmark for EXAMPLE=#{EXAMPLE}" }
+    load_rows(bench[:seed])
+    paths = bench[:paths].call
     [54410, 54420].each { ExampleServers.ensure_port_free(_1) }
-    rails = start_rails(54410, threads: 5)
+    rails = start_rails(54410, threads: 5, workers: ENV.fetch("RAILS_WORKERS", "0").to_i)
     rust_server = start_rust(rust, 54420, workers: 5)
-    [["rails", 54410, rails], ["rust", 54420, rust_server]].each do |name, port, pid|
-      ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", pid)
-      id = first_post_id
-      ["/posts", "/posts/#{id}"].each do |path|
+    servers = [["rails", 54410, rails], ["rust", 54420, rust_server]]
+    servers.each { |_, port, pid| ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", pid, timeout: 60) }
+    same_responses!(paths, bench[:headers])
+    puts "rails: #{rails_setup}; rust: 5 workers; loadgen: 10 connections, 3 s warm-up, 10 s per run"
+    servers.each do |name, port, pid|
+      paths.each do |path|
         url = "http://127.0.0.1:#{port}#{path}"
-        sh loadgen, url, "10", "3", out: File::NULL # warm up
-        puts format("%-5s %-12s %s  rss %d MiB", name, path, `#{loadgen} #{url} 10 10`.strip, rss_mib(pid))
+        system(loadgen, url, "10", "3", *bench[:headers], out: File::NULL, exception: true) # warm up
+        ENV.fetch("RUNS", "1").to_i.times do
+          result = `#{[loadgen, url, "10", "10", *bench[:headers]].shelljoin}`.strip
+          puts format("%-5s %-26s %s  memory %d MiB", name, bench[:label].(path), result, memory_mib(pid))
+        end
       end
     end
   ensure
@@ -29,8 +43,41 @@ namespace :example do
   end
 end
 
-def seed_posts
-  script = 'user = User.first; 100.times { |i| Post.create!(user:, title: "Post #{i}", body: "Body #{i}", status: :published) }'
+# What each example is measured on: the rows it loads, the endpoints, and
+# the headers every request carries.
+BENCHMARKS = {
+  "blog" => {
+    seed: 'user = User.first; 100.times { |i| Post.create!(user:, title: "Post #{i}", body: "Body #{i}", status: :published) }',
+    paths: -> { ["/posts", "/posts/#{first_id("posts")}"] },
+    label: ->(path) { path.sub(/\d+\z/, ":id") },
+    headers: []
+  },
+  # Alice's projects: 20 of 42 on a page. "Big" holds 50 tasks with due
+  # dates around today, so `overdue` varies.
+  "tracker" => {
+    seed: <<~'RUBY',
+      alice = User.find_by!(email: "alice@example.com")
+      bob = User.find_by!(email: "bob@example.com")
+      40.times { |i| Project.create!(name: format("Project %02d", i), owner: alice) }
+      big = Project.create!(name: "Big", owner: alice)
+      big.memberships.create!(user: bob, role: :member)
+      50.times do |i|
+        big.tasks.create!(title: "Task #{i}", notes: "Notes #{i}", status: %i[todo doing done][i % 3],
+                          priority: %i[low normal high][i % 3], estimate: i + 1, due_on: Date.current + (i - 25),
+                          assignee: i.even? ? bob : alice)
+      end
+    RUBY
+    paths: lambda do
+      big = sql("SELECT id FROM projects WHERE name = 'Big'")
+      ["/projects", "/projects/#{big}", "/projects/#{big}/tasks", "/tasks/#{sql("SELECT min(id) FROM tasks WHERE project_id = #{big}")}"]
+    end,
+    label: ->(path) { path.gsub(/\d+/, ":id") },
+    headers: ["X-Api-Token: alice-token-0000000000000"]
+  }
+}.freeze
+
+# The fixtures, then the benchmark's rows, in the database both servers use.
+def load_rows(script)
   Dir.chdir(EXAMPLE_APP) do
     Rutile.unbundled do
       sh(EXAMPLE_ENV, "bin/rails", "db:fixtures:load")
@@ -39,20 +86,53 @@ def seed_posts
   end
 end
 
-def start_rails(port, threads:)
-  env = EXAMPLE_ENV.merge("RAILS_ENV" => "benchmark", "SECRET_KEY_BASE" => "benchmark", "RAILS_MAX_THREADS" => threads.to_s)
-  Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { spawn(env, "bin/rails", "server", "-p", port.to_s, out: File::NULL) } }
+def sql(query) = `psql -h localhost -p #{PG_PORT} -U postgres -d #{EXAMPLE}_test -Atc #{query.shellescape}`.strip
+
+def first_id(table) = sql("SELECT id FROM #{table} ORDER BY id LIMIT 1")
+
+# A benchmark compares like with like only if both servers answer alike.
+def same_responses!(paths, headers)
+  fields = headers.to_h { _1.split(":", 2).map(&:strip) }
+  paths.each do |path|
+    rails, rust = [54410, 54420].map do |port|
+      response = Net::HTTP.start("127.0.0.1", port) { |http| http.get(path, fields.merge("Accept" => "application/json")) }
+      [response.code, response.body]
+    end
+    abort "#{path}: Rails answered #{rails.first}, Rust #{rust.first}" unless rails.first == rust.first
+    abort "#{path}: the bodies differ\nrails: #{rails.last[0, 500]}\nrust:  #{rust.last[0, 500]}" unless rails.last == rust.last
+    puts "#{path}: #{rails.first}, #{rails.last.bytesize} bytes, the same from both"
+  end
+end
+
+def rails_workers = ENV.fetch("RAILS_WORKERS", "0").to_i
+def rails_yjit? = ENV.fetch("RAILS_YJIT", "1") == "1"
+
+def rails_setup
+  processes = rails_workers.positive? ? "Puma cluster, #{rails_workers} workers x 5 threads" : "one Puma process, 5 threads"
+  "#{processes}, #{rails_yjit? ? "YJIT" : "interpreter"}"
+end
+
+def start_rails(port, threads:, workers:)
+  env = EXAMPLE_ENV.merge("RAILS_ENV" => "benchmark", "SECRET_KEY_BASE" => "benchmark", "RAILS_MAX_THREADS" => threads.to_s,
+                          "PORT" => port.to_s, "RAILS_YJIT" => rails_yjit? ? "1" : "0")
+  command = ["bundle", "exec", "puma", "-C", "config/puma.rb", "-e", "benchmark", "-p", port.to_s]
+  command += ["-w", workers.to_s] if workers.positive?
+  Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { spawn(env, *command, out: File::NULL) } }
 end
 
 def start_rust(rust, port, workers:)
-  env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/blog_test", "BIND" => "127.0.0.1:#{port}", "WORKERS" => workers.to_s }
-  spawn(env, File.join(rust, "target/release/blog"), err: File::NULL)
+  env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
+          "WORKERS" => workers.to_s }
+  spawn(env, File.join(rust, "target/release", EXAMPLE), err: File::NULL)
 end
 
-def first_post_id
-  `psql -h localhost -p #{PG_PORT} -U postgres -d blog_test -Atc "SELECT id FROM posts ORDER BY id LIMIT 1"`.to_i
-end
-
-def rss_mib(pid)
-  `ps -o rss= -p #{pid}`.to_i / 1024
+# The server and its forked workers. Proportional set size where Linux
+# reports it, so pages Puma's workers share count once; RSS elsewhere.
+def memory_mib(pid)
+  pids = [pid, *`pgrep -P #{pid}`.split.map(&:to_i)]
+  kib = pids.sum do |p|
+    rollup = "/proc/#{p}/smaps_rollup"
+    File.exist?(rollup) ? File.read(rollup)[/^Pss:\s+(\d+)/, 1].to_i : `ps -o rss= -p #{p}`.to_i
+  end
+  kib / 1024
 end

@@ -18,3 +18,7 @@ production:
   <<: *default
   database: tracker_production
   password: <%= ENV["TRACKER_DATABASE_PASSWORD"] %>
+
+benchmark:
+  <<: *default
+  database: tracker_test
