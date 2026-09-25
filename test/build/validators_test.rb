@@ -107,4 +107,21 @@ class ValidatorsTest < Minitest::Test
     assert_equal ["app/models/membership.rb: uniqueness validator option case_sensitive isn't supported yet"],
                  problems(app, "Membership")
   end
+
+  # Rails' LengthValidator checks nil whenever allow_nil or allow_blank is
+  # given at all, so a false one isn't the same as none.
+  def test_a_false_guard_on_a_length_validator_is_refused
+    %w[allow_nil allow_blank].each do |guard|
+      app = tracker_with("Task") { |validators| validators.find { _1["kind"] == "length" }["options"][guard] = false }
+      assert_equal ["app/models/task.rb: length validator option #{guard}: false isn't supported yet"], problems(app, "Task")
+    end
+  end
+
+  # An unused import is a warning, which fails the build.
+  def test_number_is_imported_only_when_a_comparison_uses_it
+    app = tracker_with("Task") { estimate(_1)["options"] = { "only_integer" => true } }
+    task = rust("Task", app)
+    refute_match(/use rustonrails::\{[^}]*\bNumber\b/, task)
+    assert_rust_includes task, "Check::Numericality(Numericality { only_integer: true, ..Numericality::default() })"
+  end
 end

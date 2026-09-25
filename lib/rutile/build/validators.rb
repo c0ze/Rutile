@@ -27,6 +27,8 @@ module Rutile
         end
         extra = options.keys - OPTIONS.fetch(kind) { unsupported!("#{kind} validator") } - GUARDS
         unsupported!("#{kind} validator option #{extra.join(", ")}") unless extra.empty?
+        # Rails' LengthValidator checks nil whenever a guard is given, even a false one.
+        GUARDS.each { unsupported!("length validator option #{_1}: false") if kind == "length" && options[_1] == false }
         @uses.rt("Check")
         guards = GUARDS.select { options[_1] }.map { ".#{_1}()" }
         ["// validates #{validator["attributes"].map { ":#{_1}" }.join(", ")}, #{kind}"] +
@@ -59,7 +61,7 @@ module Rutile
       # Options that name a method or a lambda are called in Rails; only
       # literal numbers and booleans map.
       def numericality(options)
-        @uses.rt("Numericality", "Number")
+        @uses.rt("Numericality")
         integer = options["only_integer"]
         refuse_option!("only_integer", integer) unless [true, false, nil].include?(integer)
         fields = integer ? ["only_integer: true"] : []
@@ -67,6 +69,7 @@ module Rutile
           value = options[name]
           next if value.nil?
 
+          @uses.rt("Number")
           case value
           when Integer then I64.cover?(value) ? "#{name}: Some(Number::Int(#{value}))" : refuse_option!(name, value)
           when Float then "#{name}: Some(Number::Float(#{value}))"
