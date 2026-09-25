@@ -1,16 +1,9 @@
-app/controllers/application_controller.rb:20: a rescue handler with parameters isn't supported yet
 app/controllers/projects_controller.rb:7: a non-literal limit isn't supported yet
 app/controllers/projects_controller.rb:31: archive! on Project isn't supported yet
 app/controllers/tasks_controller.rb:9: a block passed to map isn't supported yet
 app/controllers/tasks_controller.rb:43: joins on Task isn't supported yet
-app/models/membership.rb: uniqueness validator option scope isn't supported yet
-app/models/project.rb: uniqueness validator option scope isn't supported yet
-app/models/task.rb: before_save :stamp_completion with the condition :will_save_change_to_status? isn't supported yet
-app/models/task.rb: date column due_on isn't supported yet
-app/models/task.rb: numericality validator isn't supported yet
 app/models/task.rb:13: a scope parameter (query) not compared with a column isn't supported yet
 app/models/user.rb: an after_initialize block from outside the app isn't supported yet
-app/models/user.rb: dependent: :nullify isn't supported yet
 app/models/user.rb:7: has_secure_token in a class body isn't supported yet
 app/models/user.rb:8: normalizes in a class body isn't supported yet
-15 problems
+8 problems
