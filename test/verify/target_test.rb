@@ -64,6 +64,20 @@ class TargetTest < Minitest::Test
     refute_match(/^Accept-Encoding:/i, server.request)
   end
 
+  # The tracker authenticates with X-Api-Token; the connection's own
+  # headers stay Net::HTTP's.
+  def test_forwards_every_header_the_test_sets
+    server = RecordingServer.new("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+    env = Rack::MockRequest.env_for("/up", "HTTP_X_API_TOKEN" => "abc", "HTTP_AUTHORIZATION" => "Bearer x",
+                                           "HTTP_HOST" => "www.example.com", "HTTP_VERSION" => "HTTP/1.1")
+    Rutile::Verify::Target.new("http://127.0.0.1:#{server.port}").call(env)
+    server.join
+    assert_match(/^X-Api-Token: abc\r$/i, server.request)
+    assert_match(/^Authorization: Bearer x\r$/i, server.request)
+    assert_match(/^Host: 127\.0\.0\.1:#{server.port}\r$/i, server.request)
+    refute_match(/^Version:/i, server.request)
+  end
+
   def test_passes_a_compressed_response_through_untouched
     gzipped = Zlib.gzip("{}")
     reply = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: gzip\r\nContent-Length: #{gzipped.bytesize}\r\nConnection: close\r\n\r\n".b + gzipped

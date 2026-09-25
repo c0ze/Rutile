@@ -9,8 +9,8 @@ PG_PORT = ENV.fetch("BLOG_DB_PORT", "54329")
 EXAMPLE = ENV.fetch("EXAMPLE", "blog")
 EXAMPLE_APP = File.expand_path("../examples/#{EXAMPLE}", __dir__)
 
-# Only the blog has a Rust crate in RustOnRails so far.
-def blog_only! = (abort "only the blog has a Rust crate (EXAMPLE=#{EXAMPLE})" unless EXAMPLE == "blog")
+# Only the blog has a benchmark so far: the tracker's routes want a token.
+def blog_only! = (abort "only the blog has a benchmark (EXAMPLE=#{EXAMPLE})" unless EXAMPLE == "blog")
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
@@ -58,26 +58,25 @@ namespace :example do
     abort unless diagnostics.problems.empty?
   end
 
-  desc "Generate the example app's Rust crate into RustOnRails/examples/blog"
+  desc "Generate the example app's Rust crate into RustOnRails/examples/EXAMPLE"
   task build: :db do
-    blog_only!
     require_relative "../lib/rutile"
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
-    Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples/blog"), runtime: rust, name: "blog",
+    Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples", EXAMPLE), runtime: rust, name: EXAMPLE,
                       env: "test", vars: clean)
-    puts "generated #{File.join(rust, "examples/blog/src")}"
+    puts "generated #{File.join(rust, "examples", EXAMPLE, "src")}"
   end
 
   desc "Run the example app's integration tests against the Rust port"
   task verify: :build do
-    blog_only!
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     port = ENV.fetch("VERIFY_PORT", "54400")
-    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", "blog" }
-    env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/blog_test", "BIND" => "127.0.0.1:#{port}", "WORKERS" => "4" }
+    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE }
+    env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
+            "WORKERS" => "4" }
     ExampleServers.ensure_port_free(port)
-    server = spawn(env, File.join(rust, "target/release/blog"))
+    server = spawn(env, File.join(rust, "target/release", EXAMPLE))
     begin
       ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", server)
       target = { "RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1" }
