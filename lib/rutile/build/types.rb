@@ -65,6 +65,7 @@ module Rutile
         @std = Set.new
         @rt = Set.new
         @models = Set.new
+        @constants = {}
         @lines = []
       end
 
@@ -72,6 +73,9 @@ module Rutile
       def rt(*names) = @rt.merge(names)
       def model(*names) = @models.merge(names)
       def line(text) = (@lines << text unless @lines.include?(text))
+
+      # A `const` item; false when the name already holds a different one.
+      def constant(name, item) = (@constants[name] ||= item) == item
 
       # Whatever spelling `type` in a signature needs.
       def type(type)
@@ -90,6 +94,7 @@ module Rutile
         groups << ["use rustonrails::{#{@rt.sort.join(", ")}};"] unless @rt.empty?
         groups << ["use #{models_from}::{#{@models.sort.join(", ")}};"] unless @models.empty?
         groups << @lines unless @lines.empty?
+        groups << @constants.values unless @constants.empty?
         groups.reject(&:empty?).map { _1.join("\n") }.join("\n\n")
       end
     end

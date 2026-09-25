@@ -19,6 +19,7 @@ module Rutile
       include WebCalls
       include ControlFlow
       include Expressions
+      include Constants
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -219,15 +220,6 @@ module Rutile
         when :scope then Code["self", T.relation(@model)]
         else unsupported!(node, "self here")
         end
-      end
-
-      def constant(node)
-        name = node.name.to_s
-        return Code["Time", T::TIME_CLASS] if name == "Time"
-
-        unsupported!(node, "the constant #{name}") unless @app.model?(name)
-        use_model(name)
-        Code[name, T.klass(name)]
       end
 
       def call(node)
