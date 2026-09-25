@@ -12,6 +12,7 @@ module Rutile
         when :record then "Handle<#{model}>"
         when :relation then "Relation<#{model}>"
         when :nilable then "Option<#{inner.rust}>"
+        when :list then "Vec<#{inner.rust}>"
         else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", date: "Date", value: "Value", json: "Json",
                attributes: "Attributes", record_invalid: "RecordInvalid", invalid_record: "RecordInvalid",
                unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
@@ -29,6 +30,8 @@ module Rutile
       def self.where_chain(model) = Type.new(kind: :where_chain, model:, inner: nil)
       def self.klass(model) = Type.new(kind: :class, model:, inner: nil)
       def self.nilable(inner) = Type.new(kind: :nilable, model: nil, inner:)
+      # What `map` with a block gives: a Vec.
+      def self.list(inner) = Type.new(kind: :list, model: nil, inner:)
 
       STR = self[:str]
       INT = self[:int]
@@ -100,7 +103,7 @@ module Rutile
         when :record, :relation
           rt(type.kind == :record ? "Handle" : "Relation")
           model(type.model)
-        when :nilable then self.type(type.inner)
+        when :nilable, :list then self.type(type.inner)
         when :attributes, :value, :json, :time, :date, :record_invalid, :invalid_record then rt(type.rust)
         end
       end

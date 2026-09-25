@@ -19,6 +19,7 @@ module Rutile
       include Borrowing
       include WebCalls
       include ControlFlow
+      include Blocks
       include Expressions
       include Constants
       include Queries
@@ -227,8 +228,12 @@ module Rutile
 
       def call(node)
         args = node.arguments&.arguments || []
-        unsupported!(node, "a block passed to #{node.name}") if node.block
         name = node.name.to_s
+        if node.block
+          return map_block(node) if name == "map" && node.receiver && args.empty? && !node.safe_navigation?
+
+          unsupported!(node, "a block passed to #{node.name}")
+        end
         # design.md: `send(:title)` is a direct call to `title`.
         if SENDS.include?(name) && (args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode))
           name = args.first.unescaped

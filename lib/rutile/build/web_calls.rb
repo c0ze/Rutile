@@ -60,6 +60,7 @@ module Rutile
         when :json then code
         when :record then render_record(code, code.type.model, nil, node)
         when :relation then render_relation(code, code.type.model, nil, node)
+        when :list then list_json(code, node)
         when :errors
           @uses.rt("errors_json")
           Code["errors_json(#{code.rust})", T::JSON, :read]
@@ -74,7 +75,7 @@ module Rutile
       def render_record(receiver, model, options, node)
         need_ctx!(node)
         receiver = settle([receiver], :write).first
-        Code["#{as_json(model, options, node)}.render(#{ctx_mut}, #{receiver.rust})?", T::JSON, :write]
+        Code["#{as_json(model, options, node)}.render(#{ctx_mut}, #{receiver.rust})?", T::JSON, :write, object: true]
       end
 
       # Loads once into a local, then renders the records.
@@ -138,7 +139,8 @@ module Rutile
         codes = settle(codes, :none)
         fields = pairs.zip(codes).map { |pair, code| "#{Names.str(pair.key.unescaped)}: #{owned(code)}" }
         @uses.rt("json")
-        Code["json!({ #{fields.join(", ")} })", T::JSON, codes.any?(&:writes?) ? :write : (codes.any?(&:reads?) ? :read : :none)]
+        Code["json!({ #{fields.join(", ")} })", T::JSON, codes.any?(&:writes?) ? :write : (codes.any?(&:reads?) ? :read : :none),
+             object: true]
       end
 
       def on_params(receiver, node, name, args)

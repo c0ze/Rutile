@@ -145,6 +145,7 @@ module Rutile
         when :record, :class then type.model
         when :relation then "a relation of #{type.model}"
         when :nilable then "#{describe(type.inner)} or nil"
+        when :list then "an array of #{describe(type.inner)}"
         when :cond then "the value of && or ||"
         when :record_invalid then "ActiveRecord::RecordInvalid"
         when :invalid_record then "the invalid record"
