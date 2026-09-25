@@ -55,7 +55,9 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 `rutile build` reads the manifest (running introspection first unless given one) and the Ruby files it points at, and writes one Rust file per Ruby file. The manifest decides structure; Prism gives the bodies.
 
 - **From the manifest:** a `model!` struct per table (columns in database order, database defaults, enum columns holding labels), association constants with their automatic inverses, and the `Behavior` chain: validations in the order of the validate chain (so `belongs_to`'s required check and `enum ..., validate: true` sit where Rails runs them), then callbacks event by event in chain order, with `dependent: :destroy` and `:nullify` where Rails registered them. Controllers get a struct of their instance variables and a `Controller` impl from `wrap_parameters`, `before_action` (with `only:`/`except:`) and `rescue_from`. Routes come out in match order, constraint lambdas as functions.
-- **From the Ruby:** callback methods and blocks, scope lambdas, actions and the helpers they call, rescue handlers, route constraints. A translator gives every expression a static type (a record handle, a relation, loaded records, a string, a param value, params, attributes, JSON, an errors object, or `Option` of one of these) and emits Rust as text.
+- **From the Ruby:** callback methods and blocks, scope lambdas, the model's own methods, `normalizes` lambdas, actions and the helpers they call, rescue handlers, route constraints. A translator gives every expression a static type (a record handle, a relation, loaded records, a list `map` built, a string, a param value, params, attributes, JSON, an errors object, or `Option` of one of these) and emits Rust as text.
+- **Model methods:** each becomes `Model::name(ctx, record)`, returning what its body ends on. They're translated once per build, so the model file emits them and any caller learns the return type. Every public method is compiled whether or not anything calls it, since `rutile check` has to report what the app could call. A private one is compiled when its record calls it, and only the record itself may. A model's method wins over a column or Rails method of the same name, as in Ruby.
+- **Blocks:** `map` over a relation loads the records once and runs the block's body in a `for` loop that pushes onto a `Vec`. A loop rather than a closure, so the body can borrow the `Ctx` mutably and use `?` exactly as the method around it does. Locals first assigned in the block stay in it, and `return` inside it is refused, since it would leave the method.
 - **Borrowing:** the `Ctx` is one `&mut` value, so anything that reads or writes it is bound to a local before a call that borrows it mutably. Bindings follow Ruby's evaluation order (receiver before arguments, left to right) and each expression runs once: `@post.update(post_params)` names the unwrapped record and the attributes once, assigns, then saves.
 - **Nil:** an association that can be nil and an instance variable a filter may not have set are `Option`. Calling a method on one is `Error::Nil`, which Rails would raise as NoMethodError (a 500); `&.` becomes `map`/`is_some_and`; `||=` assigns only when the attribute is nil; `render json:` of nil renders `null`.
 - **The gate:** rustfmt, then `cargo check`, and a warning counts as a failure. A generated crate that doesn't compile is a Rutile bug.
@@ -63,7 +65,7 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 
 `rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` only when it's missing, so a crate's own tests and dependencies survive a rebuild. The example crate lives at `RustOnRails/examples/blog`; its tests are hand-written.
 
-Not built yet: the `Value` fallback and rbs-inline signatures (the blog needs neither; code that would is reported as unsupported), method calls between model methods, helpers with parameters, and `rutile check`.
+Not built yet: the `Value` fallback and rbs-inline signatures (neither example needs them; code that would is reported as unsupported), so methods and helpers with parameters are refused; blocks other than `map`.
 
 ### 4. Verify
 
@@ -73,7 +75,7 @@ The app's own integration tests run against the binary. With `RUTILE_TARGET` set
 - The query cache is cleared after every forwarded request. The test process turns the cache on around each test, and without clearing it, `assert_difference` reads its stale count.
 - The target exposes `Rails.application.routes`, which is what gives the tests their `*_path` helpers.
 
-Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. This is what makes the output trustworthy, so it was built before codegen.
+Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. The target forwards every header the test sets except the connection's own, so an API token in a header reaches the Rust server. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. For the tracker (`EXAMPLE=tracker`) all 24 do. This is what makes the output trustworthy, so it was built before codegen.
 
 ## Types
 
@@ -127,7 +129,7 @@ A Rails 8 JSON API with users, posts and comments. In scope:
 
 Done when the app's request specs pass against both Puma and the binary under `rutile verify`, with a benchmark of both on the same machine.
 
-The blog met this on 2026-09-25: `rutile build` generates its crate, which passes the blog's integration tests under verify. The next milestone is [examples/tracker](../examples/tracker), written as an ordinary Rails 8 API rather than for Rutile; [gaps.md](gaps.md) is the ranked list of what compiling it takes.
+The blog met this on 2026-09-25: `rutile build` generates its crate, which passes the blog's integration tests under verify. The second milestone, [examples/tracker](../examples/tracker), was written as an ordinary Rails 8 API rather than for Rutile. It met the same bar after plans 8 to 11 closed the 28 problems `rutile check` first reported, and the ones they uncovered; [gaps.md](gaps.md) records them and what's refused that the next app will want.
 
 ## Open questions
 

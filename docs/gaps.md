@@ -1,8 +1,8 @@
-# What the tracker needs
+# What the tracker needed
 
 [examples/tracker](../examples/tracker) is a project and task tracker written as an ordinary Rails 8 API: token auth in `ApplicationController`, `has_many :through`, several enums, numericality and scoped uniqueness, a `date` column, SQL-string scopes, member routes, pagination, `create!`/`update!` with `rescue_from RecordInvalid`. Its 24 integration tests pass on Rails (`bundle exec rake example:test EXAMPLE=tracker`).
 
-`rutile check` on it reports 6 problems ([tracker-check.txt](tracker-check.txt), after plans 9a and 10): 28 before plan 8, 18 after it, 15 after plan 9b. The count is a floor. Each unit reports only its first problem, and actions behind a failed filter are skipped. Each fix below surfaces more findings until the tracker compiles.
+Since plan 11 they pass on Rust too: `rutile check` reports no problems ([tracker-check.txt](tracker-check.txt)), `bundle exec rake example:build EXAMPLE=tracker` generates `RustOnRails/examples/tracker`, and `bundle exec rake example:verify EXAMPLE=tracker` runs all 24 integration tests against it. The report went from 28 problems before plan 8 to 18 after it, 15 after plan 9b, 6 after plans 9a and 10, and none after plan 11. The tracker was written as a Rails app first, not for Rutile, so this list is what one ordinary app needed.
 
 ## Done
 
@@ -40,27 +40,26 @@ Plan 10 (`docs/superpowers/plans/2026-09-25-queries-and-numbers.md`):
 - SQL fragments with `?` binds, string interpolation, and `sanitize_sql_like`. A scope's arguments are checked against its parameters; a param value passed where a String is wanted must be one.
 - `set_task` now compiles, so the member actions behind it are read: `complete` exposed `done!`.
 
-## Ranked
+Plan 11 (`docs/superpowers/plans/2026-09-25-model-methods-and-blocks.md`):
 
-Ranked by how common the construct is in Rails apps, then by how much of the tracker it unlocks. "Findings" counts lines in the report.
+- `has_secure_token` and `normalizes`, as Rails builds them at boot (manifest v3). A normalizer is the app's lambda translated into a function on the model; RustOnRails applies it after the type cast, on assignment and to every query value, as Active Model's `NormalizedValueType` does. A token is generated when a record is built, or before create with `on: :create`.
+- A model's own methods (`archive!`, `overdue?`) become functions on the model taking the `Ctx` and the record, with return types inferred from their bodies. Every public one is compiled; a private one when its record calls it. Enum bang methods (`done!`) are `update!(status: :done)`.
+- `relation.map { |record| ... }` compiles to a loop into a `Vec`; `render json:` renders the list. `merge` works on a hash `as_json` or a literal made.
+- Verify forwards every header the test sets, so `X-Api-Token` reaches the Rust server. `build` and `verify` accept `EXAMPLE=tracker`, and the tracker is a RustOnRails workspace member.
+- Nothing new surfaced behind these: once `rutile check` was clean the crate compiled, and all 24 integration tests passed on the first verify run.
 
-### 1. Model macros (3 findings)
+## What's refused that the next app will want
 
-- `has_secure_token :api_token`, which is 2 findings: the macro, and the `after_initialize` block it registers.
-- `normalizes :email, with: ...`.
-- RustOnRails: a token generator on create, and normalization applied on assignment (Behavior entries). Rutile: map them from the class body; the `with:` lambda is Ruby Rutile can translate.
+Each of these is refused with the file and line rather than compiled wrong. They're the constructs this round met and left for later, roughly in the order a typical Rails app would hit them.
 
-### 2. Model methods called from anywhere (2 findings, more hidden)
+- **Methods with parameters**, on models and in controllers. They need the design's rbs-inline signatures (Types, layer 3); inferring from call sites would be whole-program inference.
+- **Blocks other than `map` over a relation**: `each`, `select`, `sum`, `find_each`, `map(&:name)`, numbered and `it` parameters, and `map` over a list `map` returned.
+- **Callbacks**: `after_initialize` and `after_find` blocks or methods of the app's own; `saved_change_to_x?` (the runtime keeps the changes a save will make, not those it made); callback conditions naming an app method.
+- **Normalizers** on columns other than strings, with `apply_to_nil`, or ones that could fail.
+- **Hashes** anywhere but a literal rendered as JSON or merged into `as_json`: reading keys back, symbol-keyed hashes as values, `as_json` of a relation then `merge`.
+- **A benchmark for the tracker.** `rake example:benchmark` stays blog-only: loadgen sends no headers, and every tracker route but sign-up wants a token.
 
-`@project.archive!` and `@task.done!` (an enum bang method) are the findings; `task.overdue?` is behind the `map` block. All three are called from controllers, so they aren't callbacks. The tracker's methods take no arguments, so their return types can be inferred from their bodies. Methods with arguments need the design's rbs-inline signatures (Types, layer 3). Rutile: model methods become `impl Model { pub fn ... }` taking `&mut Ctx` and a handle. Enum bang methods come from the manifest. `overdue?` compares dates, which now compile.
+## Runtime differences only verify can catch
 
-### 3. Blocks and hashes over records (1 finding)
-
-`tasks.map { |task| task.as_json.merge("overdue" => task.overdue?) }`. Rutile: `map` with a block over loaded records into a `Vec`, and JSON values built with `merge`.
-
-## Outside what the report can show
-
-- Verify: the proxy forwards only `Content-Type`, `Accept` and `Accept-Encoding`, so the tracker's `X-Api-Token` never reaches the Rust server. Forward every `HTTP_*` header the test sets.
-- RustOnRails needs an `examples/tracker` workspace member, and `build`/`verify`/`benchmark` need to accept `EXAMPLE=tracker`. Until then they refuse.
-- Runtime differences only verify can catch: JSON formats for the new types, the order of error messages, and Postgres `ILIKE` against Rails' generated SQL.
+- The tracker's tests exercise the JSON formats of dates and times, error message order, `ILIKE` against Rails' SQL, token length and email normalization, and they pass. Other apps will exercise more.
 - Where RustOnRails doesn't copy Rails, it fails rather than guess: a date string in a format only `Date._parse` reads is a cast error (a 500), not a date or nil. One case stays silent: after params assign a numeric column a value that isn't an integer ("1.5"), app code writing back exactly its cast (1) leaves numericality checking "1.5", where Rails checks 1.

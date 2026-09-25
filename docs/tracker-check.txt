@@ -1,7 +1,1 @@
-app/controllers/projects_controller.rb:31: archive! on Project isn't supported yet
-app/controllers/tasks_controller.rb:9: a block passed to map isn't supported yet
-app/controllers/tasks_controller.rb:32: done! on Task isn't supported yet
-app/models/user.rb: an after_initialize block from outside the app isn't supported yet
-app/models/user.rb:7: has_secure_token in a class body isn't supported yet
-app/models/user.rb:8: normalizes in a class body isn't supported yet
-6 problems
+no problems
