@@ -84,6 +84,16 @@ module Rutile
       # A `const` item; false when the name already holds a different one.
       def constant(name, item) = (@constants[name] ||= item) == item
 
+      # Everything `other` collected, for code translated apart and emitted
+      # here. False when a constant name clashes.
+      def merge(other)
+        @std.merge(other.std_paths)
+        @rt.merge(other.rt_names)
+        @models.merge(other.model_names)
+        other.extra_lines.each { line(_1) }
+        other.constants.all? { |name, item| constant(name, item) }
+      end
+
       # Whatever spelling `type` in a signature needs.
       def type(type)
         case type.kind
@@ -104,6 +114,14 @@ module Rutile
         groups << @constants.values unless @constants.empty?
         groups.reject(&:empty?).map { _1.join("\n") }.join("\n\n")
       end
+
+      protected
+
+      def std_paths = @std
+      def rt_names = @rt
+      def model_names = @models
+      def extra_lines = @lines
+      def constants = @constants
     end
   end
 end

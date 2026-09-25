@@ -134,7 +134,7 @@ module Rutile
       end
 
       def impl_block
-        items = associations + enum_predicates + @normalizers + methods
+        items = associations + enum_predicates + @normalizers + methods + model_methods
         items.empty? ? nil : "impl #{@name} {\n#{items.join("\n\n")}\n}"
       end
 
@@ -205,6 +205,19 @@ module Rutile
       # The callback methods the Behavior chain names, one fn each.
       def methods
         @hooks.filter_map { |name| @app.attempt { callback_method(name) } }
+      end
+
+      # The model's own methods: every public one, and the private ones
+      # something in this file calls.
+      def model_methods
+        registry = @app.model_methods
+        registry.publics(@name).each do |name|
+          @app.attempt { registry.type(@name, name, [@path, registry.definition(@name, name).first]) }
+        end
+        registry.translated(@name).map do |entry|
+          @uses.merge(entry.uses) or raise Unsupported.at(@path, entry.node, "a constant meaning two things in #{@name}")
+          entry.rust
+        end
       end
 
       def callback_method(name)

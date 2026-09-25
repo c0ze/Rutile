@@ -14,6 +14,7 @@ module Rutile
       SENDS = %w[send public_send __send__].freeze
 
       include ModelCalls
+      include RecordMethods
       include RecordCalls
       include Borrowing
       include WebCalls

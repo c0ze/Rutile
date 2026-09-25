@@ -55,6 +55,18 @@ module Rutile
         nil
       end
 
+      # `done!` → ["status", "done"] when it's an enum's bang method.
+      def enum_bang(name, method)
+        return nil unless method.to_s.end_with?("!")
+
+        label = method.to_s.delete_suffix("!")
+        model(name)["enums"].each { |attribute, values| return [attribute, label] if values.key?(label) }
+        nil
+      end
+
+      # The models' own instance methods, translated once for every caller.
+      def model_methods = @model_methods ||= ModelMethods.new(self)
+
       # `will_save_change_to_status?` → "status" when it's a column.
       def change_to_save(name, method)
         column = method.to_s[/\Awill_save_change_to_(\w+)\?\z/, 1]

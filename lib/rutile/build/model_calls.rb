@@ -8,6 +8,8 @@ module Rutile
 
       def on_record(receiver, node, name, args)
         model = receiver.type.model
+        # The model's own method wins over what Rails would define.
+        return model_method(receiver, node, model, name, args) if @app.model_methods.definition(model, name)
         if args.empty? && (type = @app.column_type(model, name))
           receiver = settle([receiver], :read).first
           return Code["#{ctx_recv}[#{receiver.rust}].#{name}#{".clone()" unless type.copy?}", T.nilable(type), :read, hint: name]
@@ -69,43 +71,6 @@ module Rutile
         end
         Code["#{const}.of(#{ctx_ref}, #{receiver.rust})", T.relation(target), :read, hint: assoc["name"],
              via: [receiver.rust, model, assoc["name"]]]
-      end
-
-      def record_method(receiver, node, model, name, args)
-        need_ctx!(node)
-        dirty = change_to_save(receiver, model, name, node) if args.empty?
-        return dirty if dirty
-
-        case [name, args.size]
-        when ["save", 0] then mutate(receiver, "save", T::BOOL)
-        when ["save!", 0] then mutate(receiver, "save_bang", T::UNIT)
-        when ["destroy", 0] then mutate(receiver, "destroy", T::BOOL)
-        when ["destroy!", 0] then mutate(receiver, "destroy_bang", T::UNIT)
-        when ["valid?", 0] then mutate(receiver, "is_valid", T::BOOL)
-        when ["reload", 0] then mutate(receiver, "reload", T::UNIT)
-        when ["increment!", 1] then mutate(receiver, "increment_bang", T::UNIT, Names.str(symbol!(args.first, node)), "1")
-        when ["update", 1] then hash?(args.first) ? update_record(receiver, node, args.first, false) : update(receiver, node, args.first)
-        when ["update!", 1] then update_record(receiver, node, args.first, true)
-        when ["errors", 0]
-          receiver = settle([receiver], :read).first
-          Code["#{ctx_recv}.errors(#{receiver.rust})", T.errors(model), :read, owner: receiver.rust]
-        when ["as_json", 0], ["as_json", 1] then render_record(receiver, model, args.first, node)
-        end
-      end
-
-      def mutate(receiver, method, type, *rest)
-        receiver = settle([receiver], :write).first
-        Code["#{ctx_recv}.#{method}(#{[receiver.rust, *rest].join(", ")})?", type, :write]
-      end
-
-      # `record.update(attributes)`: assign, then save, naming each once.
-      def update(receiver, node, arg)
-        attributes = expr(arg)
-        unsupported!(node, "update with #{describe(attributes.type)}") unless attributes.type == T::ATTRIBUTES
-        receiver = local!(receiver)
-        attributes = local!(attributes)
-        @lines << "#{ctx_recv}.assign(#{receiver.rust}, &#{attributes.rust})?;"
-        Code["#{ctx_recv}.save(#{receiver.rust})?", T::BOOL, :write]
       end
 
       # Ruby raises NoMethodError on nil; the methods nil itself answers
