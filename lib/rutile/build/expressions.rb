@@ -92,6 +92,22 @@ module Rutile
         Code[codes.map(&:rust).reduce { |a, b| "i64::#{name}(#{a}, #{b})" }, T::INT, touch(*codes)]
       end
 
+      # `"%#{query}%"`: format!, for the types whose Display is Ruby's
+      # to_s: String, Integer, true and false.
+      def interpolation(node)
+        unless node.parts.all? { _1.is_a?(Prism::StringNode) || _1.is_a?(Prism::EmbeddedStatementsNode) }
+          unsupported!(node, "interpolating a variable without braces")
+        end
+        embedded = node.parts.grep(Prism::EmbeddedStatementsNode)
+        codes = in_order(embedded) { value(only(_1.statements&.body || [], _1)) }
+        codes.zip(embedded).each do |code, part|
+          unsupported!(part, "interpolating #{describe(code.type)}") unless [T::STR, T::INT, T::BOOL].include?(code.type)
+        end
+        codes = settle(codes, :none)
+        template = node.parts.map { _1.is_a?(Prism::StringNode) ? _1.unescaped.gsub(/[{}]/) { |b| b * 2 } : "{}" }.join
+        Code["format!(#{Names.str(template)}#{codes.map { ", #{_1.rust}" }.join})", T::STR, touch(*codes)]
+      end
+
       def equality(left, right, name, node)
         left, right = settle([left, right], :none)
         l = left.type.nilable? ? left.type.inner : left.type

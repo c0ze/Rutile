@@ -128,7 +128,7 @@ module Rutile
         when "where"
           return Code[receiver.rust, T.where_chain(model), receiver.ctx, hint: receiver.hint] if args.empty?
 
-          where_pairs(receiver, model, args, node)
+          args.first.is_a?(Prism::StringNode) ? where_sql(receiver, args, node) : where_pairs(receiver, model, args, node)
         when "order" then chain.(order(args, node))
         when "limit", "offset" then paginate(receiver, name, args, node)
         when "joins" then joins(receiver, model, args, node)
@@ -141,6 +141,7 @@ module Rutile
         when "as_json" then render_relation(receiver, model, args.first, node)
         when "find" then find_in(receiver, model, args, node)
         when "include?" then include_in(receiver, model, args, node)
+        when "sanitize_sql_like" then sanitize_like(args, node)
         else scope_call(receiver, model, name, node, args)
         end
       end
@@ -150,8 +151,33 @@ module Rutile
         path = scope.dig("source", "path")
         trait = path == Scopes::APPLICATION_RECORD ? "ApplicationRecordScopes" : "#{model}Scopes"
         use_model(trait) unless trait == "#{@model}Scopes" && %i[model scope].include?(@env)
-        values = args.map { owned(value(_1)) }
-        relation(receiver, "#{receiver.rust}.#{name}(#{values.join(", ")})")
+        receiver, values = after(receiver) { scope_arguments(model, scope, args, node) }
+        relation(receiver, "#{receiver.rust}.#{name}(#{values.map(&:first).join(", ")})", *values.map(&:last))
+      end
+
+      # The arguments as the scope's parameters type them. A param value
+      # goes where a String is wanted only as a String (`to_str`): the String
+      # methods the scope calls would raise on anything else.
+      def scope_arguments(model, scope, args, node)
+        if scope["origin"] == "framework"
+          unsupported!(node, "arguments to scope :#{scope["name"]}") unless args.empty?
+          return []
+        end
+        path, line = scope["source"].values_at("path", "line")
+        names, types, strings = begin
+          ScopeParameters.of(@app, model, @app.source.block_at(path, line), path)
+        rescue Unsupported
+          raise Skipped, scope["name"] # the model file reports why
+        end
+        unsupported!(node, "scope :#{scope["name"]} with #{args.size} arguments for #{names.size}") unless args.size == names.size
+        codes = settle(in_order(args) { value(_1) }, :none)
+        names.zip(codes).map do |param, code|
+          want = types[param]
+          next [owned(code, want), code] if code.type == want
+          next ["#{code.rust}.to_str()?", code] if code.type == T::VALUE && strings.include?(param)
+
+          unsupported!(node, "passing #{describe(code.type)} to scope :#{scope["name"]}'s #{param} (#{describe(want)})")
+        end
       end
 
       # `@post.comments.new(attributes)`: a child pointing at its owner.

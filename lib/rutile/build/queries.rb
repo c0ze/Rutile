@@ -132,6 +132,30 @@ module Rutile
         unsupported!(node, "including #{name} through #{through}") if through
         ".includes(&#{model}::#{Names.constant(name)})"
       end
+
+      # `where("title ILIKE ?", pattern)`: a SQL fragment with one bind per
+      # `?`, as Rails' sanitize_sql_array counts them.
+      def where_sql(receiver, args, node)
+        sql = args.first.unescaped
+        binds = args.drop(1)
+        unless sql.count("?") == binds.size
+          unsupported!(node, "a SQL fragment with #{sql.count("?")} ? and #{binds.size} value#{"s" unless binds.size == 1}")
+        end
+        # Its binds become $1, $2, ...; a $ of its own would collide.
+        unsupported!(node, "a SQL fragment with $") if sql.include?("$")
+        receiver, codes = after(receiver) { in_order(binds) { value(_1) } }
+        codes.each { bindable!(_1, node, "a SQL bind") }
+        list = codes.map { "#{where_value(_1)}.into()" }
+        relation(receiver, "#{receiver.rust}.where_sql(#{Names.str(sql)}, vec![#{list.join(", ")}])", *codes)
+      end
+
+      # `sanitize_sql_like(query)`, with Rails' default escape character.
+      def sanitize_like(args, node)
+        code = value(only(args, node))
+        unsupported!(node, "sanitize_sql_like with #{describe(code.type)}") unless code.type == T::STR
+        @uses.rt("sanitize_sql_like")
+        Code["sanitize_sql_like(#{code.extra[:literal] ? code.rust : "&#{code.rust}"})", T::STR, code.ctx]
+      end
     end
   end
 end

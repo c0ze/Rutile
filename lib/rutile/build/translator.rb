@@ -186,6 +186,7 @@ module Rutile
       def expr(node)
         case node
         when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
+        when Prism::InterpolatedStringNode then interpolation(node)
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::IntegerNode then Code[node.value.to_s, T::INT]
         when Prism::NilNode then Code["None", T::NIL]
