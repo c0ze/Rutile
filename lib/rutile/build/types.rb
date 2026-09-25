@@ -13,7 +13,7 @@ module Rutile
         when :relation then "Relation<#{model}>"
         when :nilable then "Option<#{inner.rust}>"
         else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", date: "Date", value: "Value", json: "Json",
-               attributes: "Attributes", unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
+               attributes: "Attributes", record_invalid: "RecordInvalid", unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
         end
       end
     end
@@ -46,6 +46,9 @@ module Rutile
       TIME_CLASS = self[:time_class]
       DATE = self[:date]
       DATE_CLASS = self[:date_class]
+      # A rescue handler's exception, and the record it names.
+      RECORD_INVALID = self[:record_invalid]
+      INVALID_RECORD = self[:invalid_record]
       HEADERS = self[:headers]
       NIL = self[:nil]
       COND = self[:cond]

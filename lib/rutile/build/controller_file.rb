@@ -4,11 +4,8 @@ module Rutile
     # instance variables; wrap_parameters, before_action and rescue_from as
     # the `Controller` trait; then the actions and the helpers they call.
     class ControllerFile
-      EXCEPTIONS = {
-        "ActiveRecord::RecordNotFound" => "RecordNotFound", "ActiveRecord::RecordInvalid" => "RecordInvalid",
-        "ActiveRecord::RecordNotSaved" => "RecordNotSaved", "ActiveRecord::RecordNotDestroyed" => "RecordNotDestroyed",
-        "ActionController::ParameterMissing" => "ParameterMissing"
-      }.freeze
+      include Rescues
+
       APPLICATION = "app/controllers/application_controller.rb"
       # What a helper may return: the types with a Rust spelling.
       RETURNABLE = %i[record relation nilable str int float bool time date value json attributes].freeze
@@ -71,7 +68,8 @@ module Rutile
 
       # A method of this controller that isn't an action, translated the
       # first time something calls it. A filter returns nothing; a helper
-      # returns its last value; a rescue handler returns a response.
+      # returns its last value; a rescue handler returns a response, and
+      # may take the exception.
       def helper(name, _node, tail: :value)
         if @helpers.key?(name)
           raise Skipped, name if @helpers[name]&.fetch(:failed, false)
@@ -95,9 +93,12 @@ module Rutile
       private
 
       def translate_helper(name, node, path, tail)
-        raise Unsupported.at(path, node, "a controller method with parameters") if node.parameters
+        translator = translator(path)
+        parameter = Rescues.parameter(@app, path, node) if tail == :response
+        raise Unsupported.at(path, node, "a controller method with parameters") if node.parameters && !parameter
 
-        lines, type = translator(path).body(node.body, tail)
+        exception = parameter && Rescues.declare(translator, @uses, node, parameter)
+        lines, type = translator.body(node.body, tail)
         returned = { unit: "()", response: "Response", filter: "Option<Response>" }.fetch(tail) do
           raise Unsupported.at(path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 
@@ -106,7 +107,8 @@ module Rutile
         end
         lines << "Ok(())" if tail == :unit
         rust = "// #{path}:#{node.location.start_line}\n" \
-               "fn #{Names.method(name)}(&mut self, #{req(lines)}: &mut Request) -> Result<#{returned}> {\n#{lines.join("\n")}\n}"
+               "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception].join(", ")}) " \
+               "-> Result<#{returned}> {\n#{lines.join("\n")}\n}"
         { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust: }
       end
 
@@ -197,7 +199,7 @@ module Rutile
         unless @controller["rescue_handlers"].empty?
           @uses.rt("Error")
           arms = rescue_arms
-          request = arms.any? { _1.include?("(req)") } ? "req" : "_req"
+          request = arms.any? { _1.match?(/\(req\b/) } ? "req" : "_req"
           items << "fn rescue(&mut self, #{request}: &mut Request, error: Error) -> Result<Response> {\n" \
                    "match error {\n#{arms.join("\n")}\nother => Err(other),\n}\n}"
         end
@@ -214,77 +216,7 @@ module Rutile
           "Some((#{Names.str(wrap["name"])}, #{Names.str_slice(wrap["include"])}))\n}"
       end
 
-      # Rails tries the handler registered last first; a class already
-      # matched shadows later arms for it.
-      def rescue_arms
-        seen = Set.new
-        @controller["rescue_handlers"].reverse.filter_map do |handler|
-          @app.attempt do
-            variant = EXCEPTIONS[handler["exception"]] or unsupported!("rescue_from #{handler["exception"]}")
-            next unless seen.add?(variant)
-
-            method = handler.dig("handler", "method") or unsupported!("a rescue_from block")
-            "// rescue_from #{handler["exception"]}, with: :#{method}\nError::#{variant} { .. } => #{handler_call(handler, method)},"
-          end
-        end
-      end
-
-      def handler_call(handler, method)
-        case handler.dig("handler", "source", "path")
-        when @path
-          helper(method, nil, tail: :response)
-          "self.#{Names.method(method)}(req)"
-        when APPLICATION
-          @uses.line("use super::application;")
-          "application::#{Names.method(method)}(req)"
-        else unsupported!("rescue_from handled outside #{@name} and ApplicationController")
-        end
-      end
-
       def unsupported!(what) = raise(Unsupported, "#{@path}: #{what} isn't supported yet")
-    end
-
-    # src/controllers/application.rs: the ApplicationController methods
-    # other controllers' rescue_from handlers call, as plain functions.
-    class ApplicationControllerFile
-      PATH = ControllerFile::APPLICATION
-
-      def initialize(app)
-        @app = app
-        @uses = Uses.new
-      end
-
-      def to_rust
-        Declarations.check(@app, PATH, Declarations::CONTROLLER)
-        functions = handlers.filter_map { |name| @app.attempt { function(name) } }
-        header = "//! Generated by Rutile from #{PATH}. Edit the Ruby, not this file."
-        [header, @uses.lines("crate::models"), *functions].reject(&:empty?).join("\n\n") + "\n"
-      end
-
-      # These run without a controller instance.
-      def ivar(name, _type, node) = raise(Unsupported.at(PATH, node, "@#{name} in ApplicationController"))
-      def ivar_type(_name) = nil
-      def helper(_name, _node) = nil
-      def reader?(_name) = false
-
-      private
-
-      def handlers
-        @app.controllers.flat_map { _1["rescue_handlers"] }
-                        .select { _1.dig("handler", "source", "path") == PATH }
-                        .map { _1.dig("handler", "method") }.uniq
-      end
-
-      def function(name)
-        node = @app.source.def_node(PATH, name)
-        raise Unsupported.at(PATH, node, "a rescue handler with parameters") if node.parameters
-
-        @uses.rt("Request", "Response", "Result")
-        lines, = Translator.new(@app, PATH, @uses, env: :controller, controller: self).body(node.body, :response)
-        req = lines.join("\n").match?(/\breq\b/) ? "req" : "_req"
-        "// #{PATH}:#{node.location.start_line}\npub fn #{Names.method(name)}(#{req}: &mut Request) -> Result<Response> {\n" \
-          "#{lines.join("\n")}\n}"
-      end
     end
   end
 end

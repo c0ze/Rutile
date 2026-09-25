@@ -195,6 +195,16 @@ module Rutile
         Code["#{receiver.rust}.get(#{Names.str(key.unescaped)})", T::JSON_OPT]
       end
 
+      # A rescue handler's RecordInvalid. It carries the invalid record's
+      # errors, which is all of the record a handler can read.
+      def on_record_invalid(receiver, _node, name, args)
+        Code[receiver.rust, T::INVALID_RECORD] if name == "record" && args.empty?
+      end
+
+      def on_invalid_record(receiver, _node, name, args)
+        Code["&#{receiver.rust}.errors", T.errors(nil)] if name == "errors" && args.empty?
+      end
+
       def on_json_opt(receiver, _node, name, args)
         return nil unless args.empty? && %w[present? blank?].include?(name)
 

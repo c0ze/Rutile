@@ -131,6 +131,8 @@ module Rutile
         when :relation then "a relation of #{type.model}"
         when :nilable then "#{describe(type.inner)} or nil"
         when :cond then "the value of && or ||"
+        when :record_invalid then "ActiveRecord::RecordInvalid"
+        when :invalid_record then "the invalid record"
         else type.kind.to_s.tr("_", " ")
         end
       end
