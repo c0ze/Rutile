@@ -55,8 +55,10 @@ Each of these is refused with the file and line rather than compiled wrong. They
 - **Methods with parameters**, on models and in controllers. They need the design's rbs-inline signatures (Types, layer 3); inferring from call sites would be whole-program inference.
 - **Blocks other than `map` over a relation**: `each`, `select`, `sum`, `find_each`, `map(&:name)`, numbered and `it` parameters, and `map` over a list `map` returned.
 - **Callbacks**: `after_initialize` and `after_find` blocks or methods of the app's own; `saved_change_to_x?` (the runtime keeps the changes a save will make, not those it made); callback conditions naming an app method.
-- **Normalizers** on columns other than strings, with `apply_to_nil`, or ones that could fail.
-- **Hashes** anywhere but a literal rendered as JSON or merged into `as_json`: reading keys back, symbol-keyed hashes as values, `as_json` of a relation then `merge`.
+- **Normalizers** on columns other than strings, with `apply_to_nil`, more than one on an attribute, with `it` or numbered parameters, or ones that could fail.
+- **Methods Rails itself calls**: a model method replacing one of Active Record's (`destroy`, `readonly?`, `self.generate_unique_secure_token`), or a column's or association's reader. Rutile only controls its own call sites, so RustOnRails would call its own.
+- **A `rescue` or `ensure` around a whole method body**, and enum methods renamed by `prefix:` or `suffix:`.
+- **Hashes** anywhere but a literal rendered as JSON or merged into `as_json`: reading keys back, `as_json` of a relation then `merge`, or a String and a Symbol key of the same name in one hash, which Rails' JSON encoder raises on.
 - **A benchmark for the tracker.** `rake example:benchmark` stays blog-only: loadgen sends no headers, and every tracker route but sign-up wants a token.
 
 ## Runtime differences only verify can catch

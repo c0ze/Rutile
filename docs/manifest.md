@@ -69,10 +69,18 @@ Every non-abstract Active Record model whose class is defined under `app/`, sort
 }
 ```
 
-`normalizations` maps each attribute given `normalizes` to its normalizer (usually `{"proc": <location>}`) and `apply_to_nil`, sorted by attribute:
+`normalizations` maps each attribute given `normalizes` to its normalizers, sorted by attribute. Each `normalizes` naming the attribute adds one, and they're listed in the order Rails runs them: the first declared runs first. `with` is usually `{"proc": <location>}`.
 
 ```json
-"normalizations": {"email": {"with": {"proc": {"path": "app/models/user.rb", "line": 8}}, "apply_to_nil": false}}
+"normalizations": {"email": [{"with": {"proc": {"path": "app/models/user.rb", "line": 8}}, "apply_to_nil": false}]}
+```
+
+`enum_methods` lists the instance methods `enum` defined, sorted: `done?` and `done!` for each label, `status_done?` with `prefix: true`, none with `instance_methods: false`.
+
+`overrides` lists the methods the app defines (in the model, `ApplicationRecord` or a concern) that replace one of Active Record's, which Rails' own code then calls. Class methods are prefixed `self.`:
+
+```json
+"overrides": [{"name": "readonly?", "source": {"path": "app/models/project.rb", "line": 19}}]
 ```
 
 `attributes` maps every attribute Active Record knows to its type name, sorted, including ones declared with `attribute` that have no column. Enum attributes report their stored type (`integer`).

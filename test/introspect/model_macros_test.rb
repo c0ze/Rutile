@@ -7,7 +7,7 @@ class ModelMacrosTest < Minitest::Test
   def user = TrackerHelper.manifest["models"].find { _1["name"] == "User" }
 
   def test_normalizations_name_their_lambda
-    assert_equal({ "email" => { "with" => { "proc" => { "path" => "app/models/user.rb", "line" => 8 } }, "apply_to_nil" => false } },
+    assert_equal({ "email" => [{ "with" => { "proc" => { "path" => "app/models/user.rb", "line" => 8 } }, "apply_to_nil" => false }] },
                  user["normalizations"])
     assert_equal({}, IntrospectHelper.manifest["models"].find { _1["name"] == "Post" }["normalizations"])
   end
@@ -20,6 +20,13 @@ class ModelMacrosTest < Minitest::Test
                                   "secure_token" => { "attribute" => "api_token", "length" => 24 } },
                     "if" => [], "unless" => [] }],
                  user["callbacks"]["initialize"]
+  end
+
+  def test_enum_methods_are_the_ones_rails_defined
+    task = TrackerHelper.manifest["models"].find { _1["name"] == "Task" }
+    assert_equal %w[doing! doing? done! done? high! high? low! low? normal! normal? todo! todo?], task["enum_methods"]
+    assert_equal [], user["enum_methods"]
+    assert_equal [], user["overrides"]
   end
 
   def test_other_framework_blocks_carry_nothing_extra

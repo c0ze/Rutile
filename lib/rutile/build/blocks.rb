@@ -31,8 +31,10 @@ module Rutile
         unsupported!(node, "a map block giving #{describe(value.type)}") unless ELEMENTS.include?(element.kind)
 
         list = fresh("mapped")
+        pushed = owned(value, value.type)
+        variable = Names.mentions?([*lines, pushed], rust) ? rust : "_#{rust}"
         @lines << "let mut #{list} = Vec::with_capacity(#{records.rust}.len());"
-        @lines.push("for #{rust} in #{records.rust} {", *lines, "#{list}.push(#{owned(value, value.type)});", "}")
+        @lines.push("for #{variable} in #{records.rust} {", *lines, "#{list}.push(#{pushed});", "}")
         Code[list, T.list(value.type), :none, hint: list]
       end
 
@@ -70,13 +72,13 @@ module Rutile
         when :json
           unsupported!(node, "render json: an array of hashes that may be nil") if inner.nilable?
           @uses.rt("Json")
-          Code["Json::Array(#{code.rust})", T::JSON, code.ctx]
+          Code["Json::Array(#{owned(code)})", T::JSON, code.ctx]
         when :record
           unsupported!(node, "render json: an array of records that may be nil") if inner.nilable?
           render_list(code, element.model, node)
         else
           @uses.rt("Json")
-          Code["Json::from(#{code.rust})", T::JSON, code.ctx]
+          Code["Json::from(#{owned(code)})", T::JSON, code.ctx]
         end
       end
 
@@ -86,19 +88,26 @@ module Rutile
       end
 
       # `task.as_json.merge("overdue" => task.overdue?)`: Hash#merge, on a
-      # hash as_json or a literal made (those are `object:` Codes).
+      # hash as_json or a literal made. Those Codes carry their `keys`, each
+      # a String or a Symbol: Ruby keeps "title" and :title apart, and the
+      # JSON encoder then raises on the duplicate, so merging one onto the
+      # other is refused. The argument runs after the receiver, as in Ruby.
       def on_json(receiver, node, name, args)
         return nil unless name == "merge"
 
-        unless receiver.extra[:object]
-          unsupported!(node, "merge on a value that isn't a hash from as_json or a literal")
-        end
+        keys = receiver.extra[:keys] or unsupported!(node, "merge on a value that isn't a hash from as_json or a literal")
         arg = only(args, node)
-        other = hash?(arg) ? json_literal(arg) : expr(arg)
-        unsupported!(node, "merge with #{describe(other.type)}") unless other.type == T::JSON && other.extra[:object]
+        receiver, other = after(receiver) { hash?(arg) ? json_literal(arg) : expr(arg) }
+        added = other.extra[:keys]
+        unsupported!(node, "merge with #{describe(other.type)}") unless other.type == T::JSON && added
+        added.each do |key, kind|
+          next if [nil, kind].include?(keys[key])
+
+          unsupported!(node, "merge with the #{kind} key #{key}, which the hash already has as a #{keys[key]},")
+        end
         receiver, other = settle([receiver, other], :none)
         @uses.rt("merge")
-        Code["merge(#{receiver.rust}, #{other.rust})", T::JSON, touch(receiver, other), object: true]
+        Code["merge(#{receiver.rust}, #{other.rust})", T::JSON, touch(receiver, other), keys: keys.merge(added)]
       end
     end
   end

@@ -28,7 +28,12 @@ module Rutile
       end
 
       def names(node, path)
-        params = node.parameters&.parameters or return []
+        return [] if node.parameters.nil?
+        unless node.parameters.is_a?(Prism::BlockParametersNode)
+          raise Unsupported.at(path, node, "a scope with it or numbered parameters")
+        end
+
+        params = node.parameters.parameters or return []
         plain = params.optionals.empty? && params.posts.empty? && params.keywords.empty? &&
                 params.rest.nil? && params.keyword_rest.nil? && params.block.nil? &&
                 params.requireds.all?(Prism::RequiredParameterNode)

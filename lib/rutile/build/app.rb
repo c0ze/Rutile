@@ -44,22 +44,23 @@ module Rutile
 
       def association(name, assoc) = model(name)["associations"].find { _1["name"] == assoc.to_s }
       def enum(name, attribute) = model(name)["enums"][attribute.to_s]
-      def normalization(name, attribute) = (model(name)["normalizations"] || {})[attribute.to_s]
+      # The attribute's normalizers, innermost (first to run) first; nil if none.
+      def normalization(name, attribute) = model(name)["normalizations"][attribute.to_s]
 
-      # `draft?` → ["status", "draft"] when it's an enum predicate.
-      def enum_predicate(name, method)
-        return nil unless method.to_s.end_with?("?")
+      # The app's methods that replace one of Active Record's.
+      def overrides(name) = model(name)["overrides"]
 
-        label = method.to_s.delete_suffix("?")
-        model(name)["enums"].each { |attribute, values| return [attribute, label] if values.key?(label) }
-        nil
-      end
+      # `draft?` → ["status", "draft"] when it's an enum predicate `enum`
+      # defined (not with `prefix:`, `suffix:` or `instance_methods: false`).
+      def enum_predicate(name, method) = enum_method(name, method, "?")
 
       # `done!` → ["status", "done"] when it's an enum's bang method.
-      def enum_bang(name, method)
-        return nil unless method.to_s.end_with?("!")
+      def enum_bang(name, method) = enum_method(name, method, "!")
 
-        label = method.to_s.delete_suffix("!")
+      def enum_method(name, method, suffix)
+        return nil unless method.to_s.end_with?(suffix) && model(name)["enum_methods"].include?(method.to_s)
+
+        label = method.to_s.delete_suffix(suffix)
         model(name)["enums"].each { |attribute, values| return [attribute, label] if values.key?(label) }
         nil
       end

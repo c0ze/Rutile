@@ -48,6 +48,18 @@ class TranslatorTest < Minitest::Test
     RUST
   end
 
+  # A local assigned again is a String from the start, whatever literal
+  # it starts from, so every assignment has one type.
+  def test_a_reassigned_local_from_a_literal
+    assert_rust_includes callback("label = \"none\"\nlabel = \"draft\" if draft?\nself.title = label"), <<~RUST
+      let mut label = "none".to_string();
+      if ctx[post].is_draft() {
+          label = "draft".to_string();
+      }
+      ctx[post].title = Some(label.clone());
+    RUST
+  end
+
   def test_unsupported_calls_name_the_line
     error = assert_raises(Rutile::Build::Unsupported) { callback("title\npublish_everything") }
     assert_equal "snippet.rb:2: publish_everything on Post isn't supported yet", error.message

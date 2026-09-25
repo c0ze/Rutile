@@ -81,8 +81,14 @@ module Rutile
         if @app.enum_predicate(entry.model, entry.name) || @app.enum_bang(entry.model, entry.name)
           raise Unsupported.at(path, node, "#{entry.name}, which redefines an enum method,")
         end
+        if (clash = rails_method(entry.model, entry.name))
+          raise Unsupported.at(path, node, "#{entry.name}, which replaces #{clash},")
+        end
+        if generated_names(entry.model).include?(Names.method(entry.name))
+          raise Unsupported.at(path, node, "#{entry.name}, whose Rust name #{Names.method(entry.name)} Rutile gives something else,")
+        end
 
-        var = Names.snake(entry.model)
+        var = Names.var(entry.model)
         entry.uses = Uses.new
         translator = Translator.new(@app, path, entry.uses, env: :model, model: entry.model, self_var: var)
         lines, type = translator.body(node.body, :value)
@@ -92,11 +98,27 @@ module Rutile
         entry.uses.rt("Ctx", "Handle", "Result")
         entry.type = type
         text = lines.join("\n")
-        ctx = text.match?(/\bctx\b/) ? "ctx" : "_ctx"
-        record = text.match?(/\b#{var}\b/) ? var : "_#{var}"
+        ctx = Names.mentions?(text, "ctx") ? "ctx" : "_ctx"
+        record = Names.mentions?(text, var) ? var : "_#{var}"
         entry.rust = "// #{path}:#{node.location.start_line}\n#{"pub " if entry.visibility == :public}" \
                      "fn #{Names.method(entry.name)}(#{ctx}: &mut Ctx, #{record}: Handle<#{entry.model}>) -> Result<#{type.rust}> " \
                      "{\n#{text}\n}"
+      end
+
+      # What Rails' own code would call instead of Rutile's calls: a column
+      # or association reader, or a method of Active Record's. Nil if none.
+      def rails_method(model, name)
+        return "Active Record's #{name}" if @app.overrides(model).any? { _1["name"] == name }
+        return "the #{name} column's reader" if @app.column(model, name)
+
+        "the #{name} association's reader" if @app.association(model, name)
+      end
+
+      # Functions the model file generates on its own: enum predicates and
+      # normalizers.
+      def generated_names(model)
+        enums = @app.model(model)["enums"].values.flat_map { |values| values.keys.map { "is_#{_1}" } }
+        enums + @app.model(model)["normalizations"].keys.map { ModelMacros.function(_1) }
       end
 
       # name => [def node, visibility] for the defs in the file's class
@@ -113,9 +135,13 @@ module Rutile
             elsif node.is_a?(Prism::CallNode) && node.receiver.nil? && %i[private protected public].include?(node.name)
               args = node.arguments&.arguments || []
               current = node.name if args.empty?
-              args.each do |arg|
-                found[arg.name.to_s] = [arg, node.name] if arg.is_a?(Prism::DefNode)
-                found[arg.unescaped] = [found[arg.unescaped].first, node.name] if arg.is_a?(Prism::SymbolNode) && found[arg.unescaped]
+              args.flat_map { _1.is_a?(Prism::ArrayNode) ? _1.elements : [_1] }.each do |arg|
+                case arg
+                when Prism::DefNode then found[arg.name.to_s] = [arg, node.name]
+                when Prism::SymbolNode, Prism::StringNode
+                  found[arg.unescaped] = [found[arg.unescaped].first, node.name] if found[arg.unescaped]
+                else raise Unsupported.at(path, node, "#{node.name} with an argument that isn't a name or a def")
+                end
               end
             end
           end

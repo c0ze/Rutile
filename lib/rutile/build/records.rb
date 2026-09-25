@@ -25,6 +25,8 @@ module Rutile
       # Ruby returns the record whether or not `create` saved it.
       def create_record(model, arg, bang, node, via: nil)
         @uses.rt("Model")
+        use_model(model)
+        use_model(via[1]) if via
         blank = hash?(arg)
         record = if blank
                    @uses.rt("Record")
@@ -40,7 +42,11 @@ module Rutile
                   "#{ctx_recv}.build(#{record})"
                 end
         handle = bind(Code[built, T.record(model), :write, hint: Names.snake(model)])
-        assign_pairs(handle, model, pairs([arg], node), node) if blank
+        if blank
+          assign_pairs(handle, model, pairs([arg], node), node)
+          # Rails fills tokens after `new` assigns, so a token the hash blanked gets one.
+          @lines << "#{ctx_recv}.fill_secure_tokens(#{handle.rust})?;" if ModelMacros.initialize_tokens?(@app, model)
+        end
         @lines << "#{ctx_recv}.#{bang ? "save_bang" : "save"}(#{handle.rust})?;"
         handle
       end
@@ -70,6 +76,7 @@ module Rutile
           unsupported!(node, "#{assoc["name"]}: #{describe(value.type)}")
         end
 
+        use_model(model)
         set = ->(v) { "#{model}::#{Names.constant(assoc["name"])}.set(#{ctx_mut}, #{handle.rust}, #{v})?;" }
         if value.type.nilable?
           var = local!(value).rust

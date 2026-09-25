@@ -20,7 +20,7 @@ module Rutile
         @file = file
         @model = app.model(name)
         @path = app.model_path(name)
-        @var = Names.snake(name)
+        @var = Names.var(name)
       end
 
       def lines = normalizations + other_chains + unvalidated_enums + validations + callbacks

@@ -65,13 +65,7 @@ module Rutile
         ["#{signature} -> Self;", "// #{path}:#{line}\n#{signature} -> Self {\n#{lines.join("\n")}\n}"]
       end
 
-      # A Ruby name that's a Rust keyword: a raw identifier, or a trailing
-      # underscore for the ones that can't be raw.
-      def rust_name(name)
-        return name unless Translator::KEYWORDS.include?(name) || Translator::UNRAW.include?(name)
-
-        Translator::UNRAW.include?(name) ? "#{name}_" : "r##{name}"
-      end
+      def rust_name(name) = Names.ident(name)
     end
 
     # src/models/application_record.rs: the scopes every model inherits.

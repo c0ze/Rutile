@@ -10,16 +10,20 @@ module Rutile
       # The Rust path of the function normalizing `attribute`: nil when it
       # has none, Skipped when the model file refuses it (and reports why).
       def normalizer(app, model, attribute)
-        options = app.normalization(model, attribute) or return nil
-        raise Skipped, "normalizes :#{attribute}" if problem(app, model, attribute, options)
+        chain = app.normalization(model, attribute) or return nil
+        raise Skipped, "normalizes :#{attribute}" if problem(app, model, attribute, chain)
 
         "#{model}::#{function(attribute)}"
       end
 
       def function(attribute) = "normalize_#{attribute}"
 
-      # Why a normalization can't compile, or nil.
-      def problem(app, model, attribute, options)
+      # Why a normalization can't compile, or nil. `chain` holds one entry
+      # per `normalizes` naming the attribute.
+      def problem(app, model, attribute, chain)
+        return "normalizes :#{attribute} more than once" if chain.size > 1
+
+        options = chain.first
         return "normalizes :#{attribute} with apply_to_nil" if options["apply_to_nil"]
         return "normalizes :#{attribute} with a normalizer that isn't a lambda in the app" unless options.dig("with", "proc")
         return "normalizes :#{attribute}, which isn't a column" unless app.column(model, attribute)
@@ -27,7 +31,10 @@ module Rutile
         return "normalizes on the belongs_to key #{attribute}" if foreign_key?(app, model, attribute)
 
         type = app.column_type(model, attribute)
-        "normalizes on the #{type.kind} column #{attribute}" unless type == T::STR
+        return "normalizes on the #{type.kind} column #{attribute}" unless type == T::STR
+
+        taken = app.source.defs(app.model_path(model)).find { Names.method(_1.name) == function(attribute) }
+        "normalizes :#{attribute}, whose function #{function(attribute)} the method #{taken.name} would clash with," if taken
       end
 
       def foreign_key?(app, model, attribute)
@@ -37,14 +44,14 @@ module Rutile
       # `->(email) { email.strip.downcase }` as `pub fn normalize_email(email:
       # String) -> String`. It can't fail: the runtime normalizes query
       # values, which have no error path.
-      def translate(app, model, attribute, options, uses)
+      def translate(app, model, attribute, chain, uses)
         path = app.model_path(model)
-        problem = problem(app, model, attribute, options)
+        problem = problem(app, model, attribute, chain)
         raise Unsupported, "#{path}: #{problem} isn't supported yet" if problem
 
-        location = options["with"]["proc"]
+        location = chain.first["with"]["proc"]
         node = app.source.block_at(location["path"], location["line"])
-        params = node.parameters&.parameters
+        params = node.parameters.is_a?(Prism::BlockParametersNode) && node.parameters.parameters
         plain = params && params.requireds.size == 1 && params.requireds.first.is_a?(Prism::RequiredParameterNode) &&
                 params.optionals.empty? && params.posts.empty? && params.keywords.empty? && !params.rest &&
                 !params.keyword_rest && !params.block
@@ -58,14 +65,17 @@ module Rutile
         raise Unsupported.at(location["path"], node, "a normalizer returning #{type.kind}") unless type == T::STR
         raise Unsupported.at(location["path"], node, "a normalizer that can fail") if fallible?(lines)
 
-        parameter = lines.join("\n").match?(/\b#{rust}\b/) ? rust : "_#{rust}"
+        parameter = Names.mentions?(lines, rust) ? rust : "_#{rust}"
         "// normalizes :#{attribute} (#{location["path"]}:#{location["line"]})\n" \
           "pub fn #{function(attribute)}(#{parameter}: String) -> String {\n#{lines.join("\n")}\n}"
       end
 
       # A `?` outside string literals.
-      def fallible?(lines)
-        lines.join("\n").gsub(/r(#*)".*?"\1/m, "").gsub(/"(?:[^"\\]|\\.)*"/m, "").include?("?")
+      def fallible?(lines) = Names.code_only(lines.join("\n")).include?("?")
+
+      # Whether the model generates a token when a record is built.
+      def initialize_tokens?(app, model)
+        (app.model(model)["callbacks"]["initialize"] || []).any? { _1.dig("filter", "secure_token") }
       end
 
       # The token entry of a chain, with its Behavior line: `on: :initialize`

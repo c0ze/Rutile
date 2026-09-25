@@ -130,6 +130,7 @@ module Rutile
       def include_one(model, name, node)
         through = @app.association(model, name)&.dig("options", "through")
         unsupported!(node, "including #{name} through #{through}") if through
+        use_model(model)
         ".includes(&#{model}::#{Names.constant(name)})"
       end
 

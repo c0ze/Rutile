@@ -37,7 +37,7 @@ module Rutile
         exception = (parameter = Rescues.parameter(@app, PATH, node)) && Rescues.declare(translator, @uses, node, parameter)
         @uses.rt("Request", "Response", "Result")
         lines, = translator.body(node.body, :response)
-        req = lines.join("\n").match?(/\breq\b/) ? "req" : "_req"
+        req = Names.mentions?(lines, "req") ? "req" : "_req"
         "// #{PATH}:#{node.location.start_line}\n" \
           "pub fn #{Names.method(name)}(#{["#{req}: &mut Request", *exception].join(", ")}) -> Result<Response> {\n" \
           "#{lines.join("\n")}\n}"

@@ -91,6 +91,64 @@ class ModelMethodsTest < Minitest::Test
     end
   end
 
+  def add(ruby) = { "app/models/project.rb" => ->(source) { source.sub(/\nend\s*\z/, "\n\n  public\n\n#{ruby}end\n") } }
+
+  # Rails' own code reads a column through its reader and calls Active
+  # Record's methods, so replacing one would change what Rails does.
+  def test_what_rails_itself_would_call_is_refused
+    { "  def name = \"x\"\n" => "name, which replaces the name column's reader,",
+      "  def owner = nil\n" => "owner, which replaces the owner association's reader," }.each do |ruby, message|
+      app = edited(add(ruby))
+      model("Project", app)
+      assert_equal ["app/models/project.rb:27: #{message} isn't supported yet"], app.diagnostics.problems
+    end
+    manifest = JSON.parse(JSON.generate(TrackerHelper.manifest))
+    manifest["models"].find { _1["name"] == "Project" }["overrides"] =
+      [{ "name" => "readonly?", "source" => { "path" => "app/models/project.rb", "line" => 27 } }]
+    app = scratch_app(add("  def readonly? = archived?\n"), diagnostics: Rutile::Build::Diagnostics.new, manifest:,
+                                                                from: TrackerHelper::APP)
+    model("Project", app)
+    assert_equal ["app/models/project.rb:27: readonly?, which replaces Active Record's readonly?, isn't supported yet"],
+                 app.diagnostics.problems
+  end
+
+  def test_private_with_a_list_of_names
+    app = edited(add("  def secret = name\n  private %i[secret]\n").merge(
+      "app/controllers/projects_controller.rb" => ->(ruby) { ruby.sub("@project.archive!", "@project.secret") }
+    ))
+    controller("ProjectsController", app)
+    assert_equal ["app/controllers/projects_controller.rb:31: the private method secret from outside Project isn't supported yet"],
+                 app.diagnostics.problems
+    app = edited(add("  def secret = name\n  private [1]\n"))
+    model("Project", app)
+    assert_equal ["app/models/project.rb:28: private with an argument that isn't a name or a def isn't supported yet"],
+                 app.diagnostics.problems
+  end
+
+  def test_names_and_bodies_rust_needs_spelled_differently
+    project = model("Project", edited(add("  def ref = name\n  def kind = \"project\"\n")))
+    assert_rust_includes project, "pub fn r#ref(ctx: &mut Ctx, project: Handle<Project>) -> Result<Option<String>>"
+    assert_rust_includes project, "pub fn kind(_ctx: &mut Ctx, _project: Handle<Project>) -> Result<String>"
+
+    app = edited(add("  def safe_name\n    name\n  rescue\n    nil\n  end\n"))
+    model("Project", app)
+    assert_equal ["app/models/project.rb:27: rescue or ensure around a whole body isn't supported yet"], app.diagnostics.problems
+
+    app = edited("app/models/task.rb" => ->(ruby) { ruby.sub("  private\n", "  def is_done = true\n\n  private\n") })
+    model("Task", app)
+    assert_equal ["app/models/task.rb:21: is_done, whose Rust name is_done Rutile gives something else, isn't supported yet"],
+                 app.diagnostics.problems
+  end
+
+  # `enum ..., instance_methods: false` (or prefix:, suffix:) leaves no `done!`.
+  def test_only_the_enum_methods_rails_defined
+    manifest = JSON.parse(JSON.generate(TrackerHelper.manifest))
+    manifest["models"].find { _1["name"] == "Task" }["enum_methods"] -= %w[done! done?]
+    app = Rutile::Build::App.new(TrackerHelper::APP, manifest, diagnostics: Rutile::Build::Diagnostics.new)
+    controller("TasksController", app)
+    assert_includes app.diagnostics.problems, "app/controllers/tasks_controller.rb:32: done! on Task isn't supported yet"
+  end
+
   def test_enum_methods_and_callbacks_keep_their_meaning
     app = edited("app/models/task.rb" => ->(ruby) { ruby.sub("  private\n", "  def done? = true\n\n  private\n") })
     model("Task", app)

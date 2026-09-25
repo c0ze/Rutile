@@ -58,6 +58,7 @@ module Rutile
       # statement is: :unit (dropped), :value (returned) or :response (an
       # action's render or head). Returns the lines and the returned type.
       def body(node, tail)
+        unsupported!(node, "rescue or ensure around a whole body") if node && !node.is_a?(Prism::StatementsNode)
         @mode = tail
         reserve(node) if node
         block(node ? node.body : [], tail)
@@ -145,10 +146,12 @@ module Rutile
         if (known = @locals[name])
           raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
 
-          @lines << "#{rust} = #{owned(code)};"
+          @lines << "#{rust} = #{owned(code, known.type)};"
         else
-          @lines << "let #{"mut " if @writes[name] > 1}#{rust} = #{owned(code)};"
-          @locals[name] = Code[rust, code.type, local: true, literal: code.extra[:literal]]
+          # A local assigned again holds a String, whatever literal it starts from.
+          again = @writes[name] > 1
+          @lines << "let #{"mut " if again}#{rust} = #{owned(code, again ? code.type : nil)};"
+          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal]]
         end
       end
 

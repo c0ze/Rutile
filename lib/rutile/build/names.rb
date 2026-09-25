@@ -15,13 +15,29 @@ module Rutile
       # An association's constant: "comments" → "COMMENTS"
       def constant(name) = name.to_s.upcase
 
-      # `published?` → `is_published`, `find_by!` → `find_by_bang`
+      # `published?` → `is_published`, `find_by!` → `find_by_bang`, and a
+      # keyword such as `ref` as the raw `r#ref`.
       def method(name)
         name = name.to_s
         return "is_#{name.delete_suffix("?")}" if name.end_with?("?")
         return "#{name.delete_suffix("!")}_bang" if name.end_with?("!")
 
-        name
+        ident(name)
+      end
+
+      # A Ruby name that's a Rust keyword: a raw identifier, or a trailing
+      # underscore for the ones that can't be raw.
+      def ident(name)
+        return name unless Translator::KEYWORDS.include?(name) || Translator::UNRAW.include?(name)
+
+        Translator::UNRAW.include?(name) ? "#{name}_" : "r##{name}"
+      end
+
+      # The variable holding a model's record in its callbacks and methods:
+      # `post`, or `match_record` for a model named like a keyword.
+      def var(model)
+        name = snake(model)
+        Translator::KEYWORDS.include?(name) || Translator::UNRAW.include?(name) ? "#{name}_record" : name
       end
 
       # A string literal. Non-ASCII stays UTF-8, which Rust source allows.
@@ -35,6 +51,12 @@ module Rutile
 
       # `&["id", "name"]`
       def str_slice(values) = "&[#{values.map { str(_1) }.join(", ")}]"
+
+      # Rust source without its string literals, raw ones included.
+      def code_only(rust) = rust.gsub(/r(#*)".*?"\1/m, "").gsub(/"(?:[^"\\]|\\.)*"/m, "\"\"")
+
+      # Whether generated `lines` use the variable `name`, outside strings.
+      def mentions?(lines, name) = code_only(Array(lines).join("\n")).match?(/(?<![\w#])#{Regexp.escape(name)}\b/)
     end
   end
 end

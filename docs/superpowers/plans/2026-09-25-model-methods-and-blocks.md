@@ -77,3 +77,14 @@
 
 - [x] `bundle exec rake example:check EXAMPLE=tracker` prints `no problems`.
 - [x] `bundle exec rake example:verify EXAMPLE=tracker` passes 24/24. Pointed at a dead port, the same tests all error, so they did reach the Rust server.
+
+### Task 7: Fixes from the final review
+
+An adversarial review built edited copies of the tracker against the new code. It found 14 problems: 7 that silently differed from Rails, 3 that crashed `rutile check`, and 4 constructs `rutile check` accepted that then failed `cargo check`. Each now compiles or is refused, and each has a test:
+
+- [x] Tokens: `create!(api_token: nil, ...)` writes onto a built record, so `fill_secure_tokens` runs after the writes; a generated token goes through the attribute's normalizer; replacing `self.generate_unique_secure_token` is refused.
+- [x] Introspection: every `normalizes` on an attribute is recorded (more than one is refused), a type wrapped by `encrypts` or an enum no longer crashes it, and the manifest records `enum_methods` and `overrides`.
+- [x] Model methods: replacing one of Active Record's methods or a column's or association's reader is refused, `private %i[a b]` and `private "a"` are read, a `rescue` around a whole body is refused, a keyword name is a raw identifier, and a Rust name another generated function holds is refused.
+- [x] Enum predicates and bang methods only where Rails defined them (not with `prefix:`, `suffix:` or `instance_methods: false`).
+- [x] `merge` keeps String and Symbol keys apart and reads its receiver before the argument runs.
+- [x] Generated code: a variable mentioned only inside a string literal counts as unused, an unused block parameter is underscored, a list in a local is cloned when rendered, only models the code names are imported, and a local reassigned from a string literal is a String from the start.

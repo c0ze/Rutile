@@ -75,7 +75,23 @@ module Rutile
       def render_record(receiver, model, options, node)
         need_ctx!(node)
         receiver = settle([receiver], :write).first
-        Code["#{as_json(model, options, node)}.render(#{ctx_mut}, #{receiver.rust})?", T::JSON, :write, object: true]
+        Code["#{as_json(model, options, node)}.render(#{ctx_mut}, #{receiver.rust})?", T::JSON, :write,
+             keys: json_keys(model, options, node)]
+      end
+
+      # The String keys `as_json` gives a record: its columns after only:
+      # and except:, then what include: adds.
+      def json_keys(model, options, node)
+        entries = options ? pairs([options], node).to_h : {}
+        columns = @app.columns(model).map { _1["name"] }
+        columns &= symbols(entries["only"], node) if entries["only"]
+        columns -= symbols(entries["except"], node) if entries["except"]
+        included = entries["include"]
+        names = if included.nil? then []
+                elsif hash?(included) then pairs([included], node).map(&:first)
+                else symbols(included, node)
+                end
+        (columns + names).to_h { [_1, :string] }
       end
 
       # Loads once into a local, then renders the records.
@@ -127,6 +143,12 @@ module Rutile
           key = pair.is_a?(Prism::AssocNode) && (pair.key.is_a?(Prism::SymbolNode) || pair.key.is_a?(Prism::StringNode))
           unsupported!(node, "a hash key that isn't a symbol or string") unless key
         end
+        # "a" and :a are two keys in Ruby, and one duplicate in JSON, which Rails' encoder refuses.
+        keys = pairs.to_h { [_1.key.unescaped, _1.key.is_a?(Prism::SymbolNode) ? :symbol : :string] }
+        pairs.each do |pair|
+          kind = pair.key.is_a?(Prism::SymbolNode) ? :symbol : :string
+          unsupported!(node, "a hash with both \"#{pair.key.unescaped}\" and :#{pair.key.unescaped}") unless keys[pair.key.unescaped] == kind
+        end
         codes = in_order(pairs) do |pair|
           value = expr(pair.value)
           next Code["null", T::JSON] if value.type == T::NIL
@@ -140,7 +162,7 @@ module Rutile
         fields = pairs.zip(codes).map { |pair, code| "#{Names.str(pair.key.unescaped)}: #{owned(code)}" }
         @uses.rt("json")
         Code["json!({ #{fields.join(", ")} })", T::JSON, codes.any?(&:writes?) ? :write : (codes.any?(&:reads?) ? :read : :none),
-             object: true]
+             keys:]
       end
 
       def on_params(receiver, node, name, args)

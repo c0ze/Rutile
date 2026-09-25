@@ -55,7 +55,8 @@ module Rutile
         unsupported!(node, "#{assoc["macro"]} :#{assoc["name"]}") unless %w[belongs_to has_many].include?(assoc["macro"])
         const = "#{model}::#{Names.constant(assoc["name"])}"
         target = assoc["class_name"]
-        use_model(target)
+        # The constant names the owner; the target is imported where it's named.
+        use_model(model)
         if assoc["macro"] == "belongs_to"
           receiver = settle([receiver], :write).first
           return Code["#{const}.get(#{ctx_mut}, #{receiver.rust})?", T.nilable(T.record(target)), :write, hint: assoc["name"]]
@@ -164,6 +165,8 @@ module Rutile
         target = receiver.type.model
         attributes = settle([attributes_arg(args, node)], :write).first
         @uses.rt("Model")
+        use_model(owner_model)
+        use_model(target)
         Code["#{owner_model}::#{Names.constant(assoc)}.build(#{ctx_mut}, #{owner}, " \
              "#{target}::from_attributes(&#{attributes.rust})?)?", T.record(target), :write, hint: Names.snake(target)]
       end

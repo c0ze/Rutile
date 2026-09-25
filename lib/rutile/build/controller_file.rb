@@ -127,7 +127,7 @@ module Rutile
         nil
       end
 
-      def req(lines) = lines.join("\n").match?(/\breq\b/) ? "req" : "_req"
+      def req(lines) = Names.mentions?(lines, "req") ? "req" : "_req"
 
       def action(node)
         raise Unsupported.at(@path, node, "an action with parameters") if node.parameters
