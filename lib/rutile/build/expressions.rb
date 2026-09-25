@@ -4,6 +4,9 @@ module Rutile
     module Expressions
       COMPARE = %w[== != < <= > >=].freeze
       ORDERED = %i[int float str time].freeze
+      ARITHMETIC = %w[+ - *].freeze
+      # How tightly Rust binds each operator.
+      BINDS = { "+" => 1, "-" => 1, "*" => 2 }.freeze
 
       private
 
@@ -53,6 +56,40 @@ module Rutile
         unsupported!(node, "#{name} nil on a value that's never nil") unless value.type.nilable?
 
         "#{value.rust}.#{name == "==" ? "is_none" : "is_some"}()"
+      end
+
+      # `a + b`, `a - b`, `a * b` on two Integers or two Floats. Ruby
+      # promotes an overflowing Integer to a Bignum; generated crates build
+      # with overflow-checks, so Rust panics (a 500) instead of wrapping.
+      # A nil operand raises, as it does in Ruby.
+      def arithmetic(node, name, arg)
+        left, right = in_order([node.receiver, arg]) { value(_1) }.map { unwrap(_1, name) }
+        unless left.type == right.type && %i[int float].include?(left.type.kind)
+          unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}")
+        end
+        left, right = settle([left, right], :none)
+        rust = "#{operand(left, name, false)} #{name} #{operand(right, name, true)}"
+        Code[rust, left.type, touch(left, right), arith: name]
+      end
+
+      # Parentheses where Rust would regroup: a looser operator inside a
+      # tighter one, an equal one on the right (`a - (b - c)`), an `if`.
+      def operand(code, name, right)
+        inner = code.extra[:arith]
+        loose = inner && (BINDS[inner] < BINDS[name] || (right && BINDS[inner] == BINDS[name]))
+        loose || code.rust.start_with?("if ") ? "(#{code.rust})" : code.rust
+      end
+
+      # `[a, b].max`: Integers only; Ruby raises comparing nil.
+      def extremum(node, name)
+        elements = node.receiver.elements
+        unsupported!(node, "#{name} of an empty array") if elements.empty?
+        codes = in_order(elements) { value(_1) }
+        unless codes.all? { _1.type == T::INT }
+          unsupported!(node, "#{name} over #{codes.map { describe(_1.type) }.uniq.join(" and ")}")
+        end
+        codes = settle(codes, :none)
+        Code[codes.map(&:rust).reduce { |a, b| "i64::#{name}(#{a}, #{b})" }, T::INT, touch(*codes)]
       end
 
       def equality(left, right, name, node)

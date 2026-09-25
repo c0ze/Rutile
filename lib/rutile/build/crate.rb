@@ -80,6 +80,11 @@ module Rutile
 
           [dependencies]
           rustonrails = { path = "#{runtime}" }
+
+          # Ruby promotes an overflowing Integer to a Bignum. This crate panics
+          # (the server's 500) instead of wrapping, in release builds too.
+          [profile.release]
+          overflow-checks = true
         TOML
       end
 

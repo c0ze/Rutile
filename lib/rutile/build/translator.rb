@@ -232,10 +232,12 @@ module Rutile
           args = args.drop(1)
         end
         return self_call(node, name, args) if node.receiver.nil?
-        operator = name == "!" || Expressions::COMPARE.include?(name)
+        return extremum(node, name) if node.receiver.is_a?(Prism::ArrayNode) && %w[max min].include?(name) && args.empty?
+        operator = name == "!" || (Expressions::COMPARE + Expressions::ARITHMETIC).include?(name)
         unsupported!(node, "&. with an operator") if operator && node.safe_navigation?
         return negate(expr(node.receiver), node) if name == "!" && args.empty?
         return compare(node, name, args.first) if Expressions::COMPARE.include?(name) && args.size == 1
+        return arithmetic(node, name, args.first) if Expressions::ARITHMETIC.include?(name) && args.size == 1
 
         receiver = expr(node.receiver)
         unsupported!(node, "a call chained after &.") if receiver.extra[:nav]
