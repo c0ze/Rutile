@@ -242,12 +242,22 @@ class ModelFileTest < Minitest::Test
   # Code after the class runs at load and can redefine what the build
   # compiled: `Post.class_eval { def title = "x" }` changed nothing here.
   def test_code_outside_the_class_is_refused
-    app = scratch_app({ "app/models/post.rb" => ->(ruby) { "require \"json\"\n#{ruby}Post.class_eval do\n  def title = \"x\"\nend\n" } })
+    app = scratch_app({ "app/models/post.rb" => ->(ruby) { "#{ruby}Post.class_eval do\n  def title = \"x\"\nend\n" } })
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
     assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
-    patched = scratch_app({ "app/models/post.rb" => ->(ruby) { "#{ruby}require_relative \"../../config/post_patch\"\n" } })
-    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(patched, "Post").to_rust }
-    assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
+    %w[require_relative\ "../../config/post_patch" require\ "post_patch"].each do |line|
+      patched = scratch_app({ "app/models/post.rb" => ->(ruby) { "#{ruby}#{line}\n" } })
+      error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(patched, "Post").to_rust }
+      assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
+    end
+  end
+
+  # A caller would compare the String it gets back where Ruby's Symbol
+  # equals no String.
+  def test_a_method_returning_a_symbol_is_refused
+    app = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("class Post < ApplicationRecord\n", "class Post < ApplicationRecord\n  def level = :high\n\n") } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
+    assert_match(/post.rb:\d+: a method returning a symbol isn't supported yet\z/, error.message)
   end
 
   def test_a_namespaced_model_is_refused

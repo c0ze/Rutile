@@ -4,16 +4,32 @@ require "fileutils"
 require_relative "../../lib/rutile"
 
 class RulesTest < Minitest::Test
-  def findings(files)
+  def findings(files, homes = {})
     Dir.mktmpdir do |root|
       files.each do |path, ruby|
         FileUtils.mkdir_p(File.dirname(File.join(root, path)))
         File.write(File.join(root, path), ruby)
       end
       diagnostics = Rutile::Build::Diagnostics.new
-      Rutile::Check::Rules.scan(root, diagnostics)
+      Rutile::Check::Rules.scan(root, diagnostics, homes:)
       diagnostics.problems
     end
+  end
+
+  # An initializer or lib/ file can change a model the build reads from its
+  # own file, or every model through Rails' base class.
+  def test_patching_an_app_class_or_rails_from_elsewhere
+    homes = { "Post" => "app/models/post.rb" }
+    files = {
+      "app/models/post.rb" => "class Post < ApplicationRecord\n  include Comparable\nend\n",
+      "config/initializers/patch.rb" => "Post.class_eval { def title = \"x\" }\nActiveRecord::Base.include(Module.new)\n",
+      "lib/post_ext.rb" => "class Post\n  def title = \"y\"\nend\n"
+    }
+    assert_equal [
+      "config/initializers/patch.rb:1: reopening Post can't be compiled; use a helper module",
+      "config/initializers/patch.rb:2: reopening ActiveRecord::Base can't be compiled; use a helper module",
+      "lib/post_ext.rb:1: reopening Post outside app/models/post.rb can't be compiled; use that file"
+    ], findings(files, homes)
   end
 
   def test_the_design_rules

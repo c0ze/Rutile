@@ -14,27 +14,33 @@ module Rutile
       # Reflection that reads or writes what only the running program knows.
       REFLECTION = %i[instance_variable_get instance_variable_set const_get binding].freeze
 
+      # Rails' own classes, which a patch changes for every model or
+      # controller at once: `ActiveRecord::Base.include(...)`.
+      FRAMEWORK = %w[ActiveRecord ActiveModel ActionController ActionDispatch AbstractController ActiveSupport].freeze
+
       # Every .rb file under app/ and lib/, and the initializers, which is
-      # where a monkey patch usually lives.
-      def self.scan(root, diagnostics)
+      # where a monkey patch usually lives. `homes` maps the app's models
+      # and controllers to their own files, the only place they may open.
+      def self.scan(root, diagnostics, homes: {})
         Dir.glob("{app,lib,config/initializers}/**/*.rb", base: root).sort.each do |path|
           result = Prism.parse_file(File.join(root, path))
           next diagnostics.problem("#{path}: #{result.errors.first.message}") if result.failure?
 
-          new(path, diagnostics).visit(result.value)
+          new(path, diagnostics, homes).visit(result.value)
         end
       end
 
-      def initialize(path, diagnostics)
+      def initialize(path, diagnostics, homes = {})
         super()
         @path = path
         @diagnostics = diagnostics
+        @homes = homes
         @depth = 0
       end
 
       def visit_call_node(node)
         args = node.arguments&.arguments || []
-        if (core = core_name(node.receiver, absolute_only: false)) && reopens?(node, args)
+        if (core = core_name(node.receiver, absolute_only: false) || patched_name(node.receiver)) && reopens?(node, args)
           report(node, "reopening #{core}", "a helper module")
           return super
         end
@@ -100,6 +106,10 @@ module Rutile
       def nested(node)
         core = core_name(node.constant_path, absolute_only: !@depth.zero?)
         report(node, "reopening #{core}", "a helper module") if core
+        app_class = constant_name(node.constant_path, absolute_only: !@depth.zero?)
+        if @homes.key?(app_class) && @homes[app_class] != @path
+          report(node, "reopening #{app_class} outside #{@homes[app_class]}", "that file")
+        end
         @depth += 1
         begin
           yield
@@ -111,11 +121,27 @@ module Rutile
       # The core class a constant names: `String` at the top level, or
       # `::String` anywhere.
       def core_name(node, absolute_only:)
-        name = case node
-               when Prism::ConstantReadNode then node.name unless absolute_only
-               when Prism::ConstantPathNode then node.name if node.parent.nil?
-               end
-        name && CORE.include?(name.to_s) ? name : nil
+        name = constant_name(node, absolute_only:)
+        name && CORE.include?(name) ? name : nil
+      end
+
+      def constant_name(node, absolute_only:)
+        case node
+        when Prism::ConstantReadNode then node.name.to_s unless absolute_only
+        when Prism::ConstantPathNode then node.name.to_s if node.parent.nil?
+        end
+      end
+
+      # An app model or controller, or a Rails class, as a receiver:
+      # `Post.class_eval`, `ActiveRecord::Base.include(...)`.
+      def patched_name(node)
+        name = constant_name(node, absolute_only: false)
+        return name if @homes.key?(name)
+
+        full = node.full_name if node.is_a?(Prism::ConstantPathNode) || node.is_a?(Prism::ConstantReadNode)
+        full if full && FRAMEWORK.include?(full.delete_prefix("::").split("::").first)
+      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError
+        nil
       end
 
       def report(node, what, fix)

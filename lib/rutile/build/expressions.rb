@@ -169,8 +169,10 @@ module Rutile
         then_lines, a = capture { expr(only(node.statements&.body || [], node)) }
         else_lines, b = capture { expr(only(node.subsequent.statements&.body || [], node)) }
         type, a_rust, b_rust = unify(a, b, node)
+        # `urgent ? :high : :low` is a Symbol, which a String never equals.
+        unsupported!(node, "an if whose branches have different types") if !a.extra[:symbol] != !b.extra[:symbol]
         rust = "if #{condition} {\n#{[*then_lines, a_rust].join("\n")}\n} else {\n#{[*else_lines, b_rust].join("\n")}\n}"
-        Code[rust, type, touch(test, a, b)]
+        Code[rust, type, touch(test, a, b), symbol: a.extra[:symbol]]
       end
 
       def unify(a, b, node)

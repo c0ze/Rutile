@@ -112,6 +112,9 @@ module Rutile
         return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
 
         code = expr(node)
+        # A caller would get a String back, which `==` against a String
+        # compares where Ruby's Symbol never equals one.
+        unsupported!(node, "a method returning a symbol") if code.extra[:symbol]
         if tail == :response
           raise Unsupported.at(@path, node, "an action that doesn't end in render or head") unless code.type == T::RESPONSE
 

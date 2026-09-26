@@ -32,23 +32,17 @@ module Rutile
 
       # Code beside the class runs when the file loads and can change it
       # (`Task.class_eval { ... }` after `end`), which nothing would compile.
-      # A library may be required by name; a relative path could load a
-      # patch from a file `rutile check` never reads.
+      # That includes a require: Rails puts the app's lib/ and vendor/ on
+      # the load path, so `require "post_patch"` can load a patch from a
+      # file `rutile check` never reads.
       def outside(app, path)
         tree = app.source.tree(path)
         statements = tree.is_a?(Prism::ProgramNode) ? tree.statements.body : []
         statements.each do |node|
-          next if node.is_a?(Prism::ClassNode) || library_require?(node)
+          next if node.is_a?(Prism::ClassNode)
 
           app.attempt { raise Unsupported.at(path, node, "#{node.type.to_s.delete_suffix("_node").tr("_", " ")} outside the class") }
         end
-      end
-
-      def library_require?(node)
-        return false unless node.is_a?(Prism::CallNode) && node.receiver.nil? && node.name == :require
-
-        name = node.arguments&.arguments&.first
-        node.arguments.arguments.size == 1 && name.is_a?(Prism::StringNode) && !name.unescaped.match?(%r{\A[./~]})
       end
 
       # The class-body calls named `name` in `tree`: `attr_reader :current_user`.
