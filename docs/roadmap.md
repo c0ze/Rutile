@@ -1,6 +1,6 @@
 # Roadmap
 
-Rutile and RustOnRails version together: each milestone below is one minor version of both, built on its own feature branch in order. The design is in [design.md](design.md); what each finished milestone took is in `docs/superpowers/plans/`.
+Rutile and RustOnRails version together: each milestone below is one minor version of both, built on its own feature branch in order. The design is in [design.md](design.md); what each finished milestone shipped is in the [changelog](../CHANGELOG.md).
 
 ## Where things stand (0.5.0)
 

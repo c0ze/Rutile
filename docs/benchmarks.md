@@ -84,7 +84,7 @@ A second run of the `rutile build` output, meant for a quiet machine. It ran on 
 
 ## 2026-09-25, generated code, machine under load
 
-The Rust side here is `rutile build` output. Other work on the machine (several Godot processes at full load) had the load average at 19.7 when the run started and 34.4 when it ended, so both servers are slower than in the quiet run below. They ran back to back under the same contention, so the ratios are the useful part: 27 times Rails on the index, 16.5 times on `show`.
+The Rust side here is `rutile build` output. Other work on the machine had the load average at 19.7 when the run started and 34.4 when it ended, so both servers are slower than in the quiet run below. They ran back to back under the same contention, so the ratios are the useful part: 27 times Rails on the index, 16.5 times on `show`.
 
 | Endpoint | Server | req/s | p50 | p99 | RSS |
 |---|---|---:|---:|---:|---:|
@@ -108,7 +108,7 @@ That is 27 times the throughput on the index and 21 times on `show`, in under a 
 
 Setup:
 
-- Machine: Ryzen 7 5700X3D (8 cores, 16 threads), 64 GiB, CachyOS on Linux 7.2.6. Postgres, both servers and the load generator all run on it.
+- Machine: an 8-core desktop (16 threads), 64 GiB, Linux. Postgres, both servers and the load generator all run on it.
 - Postgres 16.15, the repo's local cluster (`rake pg:start`), database `blog_test` holding the test fixtures plus 100 published posts.
 - Rails 8.1.4 on Ruby 3.4.9, `RAILS_ENV=benchmark`: production settings with SSL off and the log level at `warn`. One Puma process, 5 threads.
 - Rust: `RustOnRails/examples/blog` (the hand port for the quiet run, `rutile build` output for the one above), release build, 5 worker threads with one connection each.
@@ -116,7 +116,7 @@ Setup:
 
 ## Caveats
 
-- The three earlier sections ran on a Ruby built without YJIT, one Puma process, and a different machine (a Ryzen 7 5700X3D). The first section adds both on this machine: YJIT raises Rails' throughput 1.5 to 1.7 times, and cluster mode on 4 cores another 5 to 8 times.
+- The three earlier sections ran on a Ruby built without YJIT, one Puma process, and a different machine (the 8-core desktop). The first section adds both on this machine: YJIT raises Rails' throughput 1.5 to 1.7 times, and cluster mode on 4 cores another 5 to 8 times.
 - One Puma process is bound by the GVL, and its 5 threads mostly help while a request waits on Postgres. Cluster mode forks one process per core, which raises Rails' memory with its throughput.
 - Small tables on a local Postgres, with the load generator competing for the same CPU. Numbers on a real network and a real dataset will differ for both servers.
 

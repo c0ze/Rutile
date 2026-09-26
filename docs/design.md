@@ -1,6 +1,6 @@
 # Rutile design
 
-Started 2026-09-25. This records the decisions made so far and the questions still open. The runtime side (memory model, gem adapters, HTTP and database stack) lives in [RustOnRails/docs/design.md](../../RustOnRails/docs/design.md).
+Started 2026-09-25. This records the decisions made so far and the questions still open. The runtime side (memory model, gem adapters, HTTP and database stack) lives in [RustOnRails' design](https://github.com/c0ze/RustOnRails/blob/main/docs/design.md).
 
 ## Goal
 
@@ -130,7 +130,7 @@ A Rails 8 JSON API with users, posts and comments. In scope:
 
 Done when the app's request specs pass against both Puma and the binary under `rutile verify`, with a benchmark of both on the same machine.
 
-The blog met this on 2026-09-25: `rutile build` generates its crate, which passes the blog's integration tests under verify. The second milestone, [examples/tracker](../examples/tracker), was written as an ordinary Rails 8 API rather than for Rutile. It met the same bar after plans 8 to 11 closed the 28 problems `rutile check` first reported, and the ones they uncovered; [gaps.md](gaps.md) records them and what's refused that the next app will want.
+The blog met this on 2026-09-25: `rutile build` generates its crate, which passes the blog's integration tests under verify. The second milestone, [examples/tracker](../examples/tracker), was written as an ordinary Rails 8 API rather than for Rutile. It met the same bar after five rounds of work closed the 28 problems `rutile check` first reported, and the ones they uncovered; [gaps.md](gaps.md) records them and what's refused that the next app will want.
 
 ## Open questions
 

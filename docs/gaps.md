@@ -2,11 +2,11 @@
 
 [examples/tracker](../examples/tracker) is a project and task tracker written as an ordinary Rails 8 API: token auth in `ApplicationController`, `has_many :through`, several enums, numericality and scoped uniqueness, a `date` column, SQL-string scopes, member routes, pagination, `create!`/`update!` with `rescue_from RecordInvalid`. Its 24 integration tests pass on Rails (`bundle exec rake example:test EXAMPLE=tracker`).
 
-Since plan 11 they pass on Rust too: `rutile check` reports no problems ([tracker-check.txt](tracker-check.txt)), `bundle exec rake example:build EXAMPLE=tracker` generates `RustOnRails/examples/tracker`, and `bundle exec rake example:verify EXAMPLE=tracker` runs all 24 integration tests against it. The report went from 28 problems before plan 8 to 18 after it, 15 after plan 9b, 6 after plans 9a and 10, and none after plan 11. The tracker was written as a Rails app first, not for Rutile, so this list is what one ordinary app needed.
+They pass on Rust too: `rutile check` reports no problems ([tracker-check.txt](tracker-check.txt)), `bundle exec rake example:build EXAMPLE=tracker` generates `RustOnRails/examples/tracker`, and `bundle exec rake example:verify EXAMPLE=tracker` runs all 24 integration tests against it. The report went from 28 problems to 18, 15, 6 and then none over the five rounds below. The tracker was written as a Rails app first, not for Rutile, so this list is what one ordinary app needed.
 
 ## Done
 
-Plan 8 (`docs/superpowers/plans/2026-09-25-tracker-gaps-1.md`):
+Round 1, controllers and everyday expressions:
 
 - ApplicationController's filters, private methods and `attr_reader`s now reach every controller. A filter that renders halts the chain, and `skip_before_action` follows the manifest's chain.
 - Everyday expressions: `nil`, `&&`, `||`, `!`, comparisons, the ternary, and `return` in callbacks and filters.
@@ -15,13 +15,13 @@ Plan 8 (`docs/superpowers/plans/2026-09-25-tracker-gaps-1.md`):
 - `request.headers[...]` (RustOnRails keeps request headers).
 - The report names inherited filters, and calls through an association the model file refuses are refused as well.
 
-Plan 9b (`docs/superpowers/plans/2026-09-25-has-many-through.md`):
+Round 2, `has_many :through`:
 
 - `has_many :through`, with `source:`: `User#projects` and `Project#members`. RustOnRails' `HasManyThrough<M, T>` builds an inner join on the join table; Rutile makes the constant from the two associations it chains.
 - `find` and `include?` on any relation.
 - `set_project` and `set_task`'s finder now pass, which exposed three findings further down the tracker's actions (`limit(PER_PAGE)`, `archive!`, `map` with a block).
 
-Plan 9a (branch `tracker-gaps-2a`, built by an agent from a brief; no plan file):
+Round 3, validators, dates and dirty checks:
 
 - Validators: `numericality` with `only_integer` and the six comparisons, `uniqueness: { scope: }`, and `allow_nil`/`allow_blank` on any validator, with Rails 8.1's messages. RustOnRails keeps each attribute's value as assigned until a save, because numericality checks that value ("1.5" isn't an integer though the column holds 1), and parses and compares it the way Active Model does. Options that name a method or a lambda are refused.
 - `date` columns: RustOnRails' `Date` casts, reads, writes and renders as Rails does; `Date.current` (UTC only) and `Date.today`; dates compare with the ordering operators.
@@ -30,7 +30,7 @@ Plan 9a (branch `tracker-gaps-2a`, built by an agent from a brief; no plan file)
 - `dependent: :nullify`: `HasMany::nullify_all`, one `UPDATE` in the before_destroy slot Rails uses.
 - No new findings surfaced behind these.
 
-Plan 10 (`docs/superpowers/plans/2026-09-25-queries-and-numbers.md`):
+Round 4, queries and numbers:
 
 - Class-body constants become Rust `const`s, looked up as Ruby does: the method's own class, then ApplicationController or ApplicationRecord.
 - `+`, `-` and `*` on Integers and Floats. Generated crates build with `overflow-checks` in release too, so an overflow is a 500 where Ruby would make a Bignum, never a wrapped number.
@@ -40,7 +40,7 @@ Plan 10 (`docs/superpowers/plans/2026-09-25-queries-and-numbers.md`):
 - SQL fragments with `?` binds, string interpolation, and `sanitize_sql_like`. A scope's arguments are checked against its parameters; a param value passed where a String is wanted must be one.
 - `set_task` now compiles, so the member actions behind it are read: `complete` exposed `done!`.
 
-Plan 11 (`docs/superpowers/plans/2026-09-25-model-methods-and-blocks.md`):
+Round 5, model macros, model methods and blocks:
 
 - `has_secure_token` and `normalizes`, as Rails builds them at boot (manifest v3). A normalizer is the app's lambda translated into a function on the model; RustOnRails applies it after the type cast, on assignment and to every query value, as Active Model's `NormalizedValueType` does. A token is generated when a record is built, or before create with `on: :create`.
 - A model's own methods (`archive!`, `overdue?`) become functions on the model taking the `Ctx` and the record, with return types inferred from their bodies. Every public one is compiled; a private one when its record calls it. Enum bang methods (`done!`) are `update!(status: :done)`.

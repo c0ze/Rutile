@@ -2,7 +2,7 @@
 
 # Rutile
 
-Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The source stays ordinary Ruby: it boots on MRI, its specs run as usual, `rails console` works. Production gets a native binary built against [RustOnRails](../RustOnRails), the crate that implements the Rails API in Rust.
+Rutile compiles Rails apps written in a strict subset of Ruby into Rust. The source stays ordinary Ruby: it boots on MRI, its specs run as usual, `rails console` works. Production gets a native binary built against [RustOnRails](https://github.com/c0ze/RustOnRails), the crate that implements the Rails API in Rust.
 
 The name is the mineral. Rutile quartz is clear quartz with rust-colored needles of rutile grown through it (Latin *rutilus*, reddish). You read the Ruby; the Rust is what's inside.
 
@@ -49,13 +49,13 @@ The commands, in the order you'd run them:
 3. `rutile build APP --out DIR --runtime RUSTONRAILS` writes a Cargo crate that depends on `rustonrails`, formats it and checks it with `cargo check`. `cargo build --release` gives you the binary.
 4. Verify (for now `rake example:verify`, with `EXAMPLE=tracker` for the tracker) runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
 
-The full design is in [docs/design.md](docs/design.md), and what comes next in [docs/roadmap.md](docs/roadmap.md).
+The full design is in [docs/design.md](docs/design.md), what comes next in [docs/roadmap.md](docs/roadmap.md), and known defects and loose ends in [docs/open-items.md](docs/open-items.md).
 
 ## Development
+
+Rutile needs Ruby 3.4 or later and a Rust toolchain. The example tasks and tests expect [RustOnRails](https://github.com/c0ze/RustOnRails) cloned next to this repository (or `RUSTONRAILS_DIR` pointing at it), and run Postgres 16 in a throwaway cluster under `tmp/pg` (`bundle exec rake pg:start`; `mise.toml` pins the PostgreSQL build).
 
 ```bash
 bundle install
 bundle exec rake test
 ```
-
-Ruby 3.4.9 comes from the workspace `.mise.toml` in `~/projects`.
