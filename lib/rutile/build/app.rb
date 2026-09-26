@@ -79,14 +79,20 @@ module Rutile
 
       def scope(name, scope) = model(name)["scopes"].find { _1["name"] == scope.to_s }
 
-      # The runtime reads and writes times in UTC, Rails' default. Another
-      # zone changes how `render json:` writes a time and where a date's
-      # day starts in a query, so the build refuses it rather than differ.
-      def utc!
+      # The runtime reads and writes times in UTC and writes Rails' English
+      # validation messages, which are Rails' defaults. Another zone changes
+      # how `render json:` writes a time and where a date's day starts in a
+      # query; another locale or reworded messages change every error
+      # response. The build refuses them rather than differ.
+      def defaults!
         config = manifest.fetch("config")
-        zone, stored = config.values_at("time_zone", "active_record_default_timezone")
+        zone, stored, locale = config.values_at("time_zone", "active_record_default_timezone", "default_locale")
         raise Unsupported, "config/application.rb: config.time_zone #{zone} isn't supported yet" unless zone == "UTC"
         raise Unsupported, "config/application.rb: active_record.default_timezone #{stored} isn't supported yet" unless stored == "utc"
+        raise Unsupported, "config/application.rb: the default locale #{locale} isn't supported yet" unless locale == "en"
+
+        reworded = config.fetch("error_message_files").first
+        raise Unsupported, "#{reworded}: validation messages set in a locale file aren't supported yet" if reworded
       end
 
       def controllers = manifest.fetch("controllers")

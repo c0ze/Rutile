@@ -33,6 +33,16 @@ class CrateTest < Minitest::Test
     assert_equal "config/application.rb: active_record.default_timezone local isn't supported yet", error.message
   end
 
+  # Error responses carry Rails' English messages; the runtime has no others.
+  def test_another_locale_or_reworded_messages_are_refused
+    japanese = app_with { _1["config"]["default_locale"] = "ja" }
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::Crate.new(japanese, "unused", name: "blog", runtime: RUNTIME).files }
+    assert_equal "config/application.rb: the default locale ja isn't supported yet", error.message
+    reworded = app_with { _1["config"]["error_message_files"] = ["config/locales/en.yml"] }
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::Crate.new(reworded, "unused", name: "blog", runtime: RUNTIME).files }
+    assert_equal "config/locales/en.yml: validation messages set in a locale file aren't supported yet", error.message
+  end
+
   def test_a_rebuild_replaces_src_and_keeps_the_rest
     Dir.mktmpdir do |out|
       build(out)

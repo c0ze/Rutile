@@ -29,6 +29,9 @@ Conventions:
 | `time_zone` | `"UTC"` | `config.time_zone`, what `Time.current` uses |
 | `default_locale` | `"en"` | `I18n.default_locale`, which picks validation messages |
 | `active_record_default_timezone` | `"utc"` | how Active Record stores times |
+| `error_message_files` | `[]` | the app's locale files that reword validation messages (`errors`, `activerecord.errors`, `activemodel.errors`) |
+
+`rutile build` refuses a zone other than UTC, local times, a locale other than `en` and reworded messages: the runtime writes UTC and Rails' English messages.
 
 ## `tables`
 

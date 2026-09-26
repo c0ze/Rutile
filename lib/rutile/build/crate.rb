@@ -17,7 +17,7 @@ module Rutile
       end
 
       def files
-        @app.attempt { @app.utc! }
+        @app.attempt { @app.defaults! }
         models = @app.models.map { ModelFile.new(@app, _1["name"]) }
         record = ApplicationRecordFile.new(@app)
         controllers = ControllerFile.all(@app)
@@ -36,9 +36,9 @@ module Rutile
       def write
         generated = files
         FileUtils.mkdir_p(@out)
+        replaceable!
         cargo = File.join(@out, "Cargo.toml")
         File.write(cargo, cargo_toml) unless File.exist?(cargo)
-        replaceable!
         FileUtils.rm_rf(File.join(@out, "src"))
         paths = generated.map do |path, text|
           full = File.join(@out, path)
