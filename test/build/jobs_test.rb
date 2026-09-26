@@ -95,4 +95,29 @@ class JobsTest < Minitest::Test
     error = assert_raises(Rutile::Build::Unsupported) { action("RestockJob.perform_later(Product.find(1), 1)\nhead :ok", app) }
     assert_equal "snippet.rb:1: RestockJob on the async queue adapter; jobs run on Sidekiq's isn't supported yet", error.message
   end
+
+  # ApplicationJob's declarations apply to every job, so they're checked too.
+  def test_application_job_is_checked
+    assert_equal ["app/jobs/application_job.rb"], store.job("RestockJob")["ancestors"]
+    body = ->(source) { source.sub("class ApplicationJob < ActiveJob::Base\n", "class ApplicationJob < ActiveJob::Base\n  discard_on ActiveJob::DeserializationError\n") }
+    app = scratch_app({ "app/jobs/application_job.rb" => body }, manifest: StoreHelper.manifest, from: StoreHelper::APP)
+    error = assert_raises(Rutile::Build::Unsupported) { job_file(app).to_rust }
+    assert_equal "app/jobs/application_job.rb:2: discard_on in a class body isn't supported yet", error.message
+  end
+
+  def test_jobs_that_depend_on_their_environment_or_namespace_are_refused
+    manifest = JSON.parse(JSON.generate(StoreHelper.manifest))
+    manifest.dig("jobs", "classes").first["queue_prefix"] = "store_production"
+    app = Rutile::Build::App.new(StoreHelper::APP, manifest)
+    error = assert_raises(Rutile::Build::Unsupported) { job_file(app).to_rust }
+    assert_match(/queue_name_prefix \(store_production\), which Rails usually sets per environment/, error.message)
+    manifest.dig("jobs", "classes").first.merge!("queue_prefix" => nil, "name" => "Admin::RestockJob")
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::JobFile.new(app, app.jobs.first).to_rust }
+    assert_equal "app/jobs/restock_job.rb: the namespaced job Admin::RestockJob isn't supported yet", error.message
+  end
+
+  # Ruby checks the argument count before perform runs.
+  def test_arity_is_checked
+    assert_rust_includes job_file.to_rust, "pub fn perform(ctx: &mut Ctx, arguments: &[Json]) -> Result<()> {\njobs::arity(arguments, 2)?;"
+  end
 end

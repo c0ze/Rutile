@@ -60,6 +60,24 @@ class StorefrontTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "<h1>Tray &lt;&amp;&gt; &#39;Co&#39;</h1>"
   end
 
+  # A page answers only a request that takes HTML: Rails' implicit render
+  # can't answer JSON (406), and a browser's Accept header is ignored.
+  test "formats other than HTML" do
+    get shop_path(format: :json)
+    assert_response :not_acceptable
+    get shop_product_path(products(:kettle)), headers: { "Accept" => "application/json" }
+    assert_response :not_acceptable
+    get shop_path, headers: { "Accept" => "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
+    assert_response :success
+    get shop_path, headers: { "Accept" => "*/*" }
+    assert_response :success
+  end
+
+  test "a product that isn't there" do
+    get shop_product_path(0)
+    assert_response :not_found
+  end
+
   private
 
   # The storefront layout around a template's output.

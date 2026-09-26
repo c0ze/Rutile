@@ -78,10 +78,10 @@ The binary reads these environment variables:
 - `DATABASE_URL`, which is required;
 - `BIND`, which defaults to `0.0.0.0:3000` in the image;
 - `WORKERS`, which defaults to 5, like Puma's threads;
-- `SECRET_KEY_BASE`, the Rails app's own, for the session cookie (since 0.10.0). It's needed only by an app with a session store. With the same secret, Rails and the binary read each other's session cookies;
+- `SECRET_KEY_BASE`, the Rails app's own, for the session cookie (since 0.10.0). An app with a session store won't start without it, as Rails won't. With the same secret, Rails and the binary read each other's session cookies;
 - `REDIS_URL`, Sidekiq's, for an app whose jobs run on Sidekiq (since 0.10.0). It defaults to `redis://localhost:6379/0`, as Sidekiq's does.
 
-`GET /up` answers 200 for health checks, as Rails' does. Migrations stay Rails': run `bin/rails db:migrate` from the Ruby app, which remains the source.
+Responses carry Rails' default security headers. With `config.force_ssl` behind `config.assume_ssl` (Rails 8's production default, for TLS ended at a proxy), they also carry HSTS, and cookies are marked `secure`. `GET /up` answers 200 for health checks, as Rails' does. Migrations stay Rails': run `bin/rails db:migrate` from the Ruby app, which remains the source.
 
 An app with jobs gets a worker in the same binary: `store work` takes jobs off the app's Sidekiq queues and runs them. It takes them as readily from Rails' `perform_later` as from the binary's own. Run it beside the server, or in place of `bundle exec sidekiq`:
 

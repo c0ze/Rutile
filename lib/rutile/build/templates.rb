@@ -10,6 +10,8 @@ module Rutile
       FORGERY = %w[verify_authenticity_token verify_same_origin_request].freeze
 
       def html? = @controller["base"] == true
+      # Whether `cookies` exists here (an older manifest doesn't say).
+      def cookies? = @controller["cookies"] != false
       def controller_path = @controller["controller_path"]
 
       # The method rendering template `name` (`storefront/show`) in the
@@ -58,7 +60,7 @@ module Rutile
         render = template_render(name, node, @path)
         lines, = translator.body(node.body, :unit)
         "// #{@path}:#{node.location.start_line}\n" \
-          "pub fn #{node.name}(&mut self, req: &mut Request) -> Result<Response> {\n#{[*lines, "self.#{render}(req, 200)"].join("\n")}\n}"
+          "pub fn #{node.name}(&mut self, req: &mut Request) -> Result<Response> {\n#{[*lines, "self.#{render}(req, 200, Some(#{Names.str(node.name.to_s)}))"].join("\n")}\n}"
       end
 
       def returns?(node) = node.is_a?(Prism::ReturnNode) || node.compact_child_nodes.any? { returns?(_1) }
@@ -73,7 +75,10 @@ module Rutile
         bodies = [*@renders.keys, *layout].map { view_method(_1, layout: _1 == layout) }
         renders = @renders.map do |name, render|
           laid_out = layout ? ["view.lay_out();", "self.view_#{method_name(layout)}(req, &mut view)?;"] : []
-          "fn #{render}(&mut self, req: &mut Request, status: u16) -> Result<Response> {\nlet mut view = View::default();\n" \
+          # Rails renders only for a request that takes HTML.
+          negotiate = "View::negotiate(req, #{Names.str(@name)}, #{Names.str(name)}, implicit)?;"
+          "fn #{render}(&mut self, req: &mut Request, status: u16, implicit: Option<&str>) -> Result<Response> {\n#{negotiate}\n" \
+            "let mut view = View::default();\n" \
             "#{["self.view_#{method_name(name)}(req, &mut view)?;", *laid_out].join("\n")}\nOk(view.response(status))\n}"
         end
         renders + bodies

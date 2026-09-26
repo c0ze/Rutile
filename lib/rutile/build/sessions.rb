@@ -13,6 +13,10 @@ module Rutile
         if name != "cookies" && store&.dig("store") != "cookie"
           unsupported!(node, store ? "a session in #{store["store"]}" : "session without a session store")
         end
+        # An API controller has `cookies` only through ActionController::Cookies.
+        if name == "cookies" && !(@controller.respond_to?(:cookies?) && @controller.cookies?)
+          unsupported!(node, "cookies in a controller without ActionController::Cookies")
+        end
         case name
         when "session" then Code["req.session", T::SESSION]
         when "cookies" then Code["req.cookies", T::COOKIES]

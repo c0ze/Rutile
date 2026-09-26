@@ -225,7 +225,8 @@ module Rutile
         items = [@app.attempt { wrap_parameters }]
         unless filters.empty?
           action = filters.any? { _1.include?("matches!(action") } ? "action" : "_action"
-          items << "fn before(&mut self, req: &mut Request, #{action}: &str) -> Result<Option<Response>> {\n" \
+          # Rails' own filters leave only a comment, which needs no request.
+          items << "fn before(&mut self, #{req(filters)}: &mut Request, #{action}: &str) -> Result<Option<Response>> {\n" \
                    "#{filters.join("\n")}\nOk(None)\n}"
         end
         unless @controller["rescue_handlers"].empty?

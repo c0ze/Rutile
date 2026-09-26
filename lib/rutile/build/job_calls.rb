@@ -28,6 +28,8 @@ module Rutile
         values = call_arguments(signature, args, node, "#{job}.#{name}", bind: :ctx)
         @uses.rt("Json")
         arguments = values.zip(signature&.params || []).map do |value, param|
+          # Active Job's JSON has no NaN or Infinity; Rails raises on them.
+          next "rustonrails::jobs::float_argument(#{value})?" if [T::FLOAT, T.nilable(T::FLOAT)].include?(param.type)
           next "Json::from(#{value})" unless param.type.inner&.kind == :record
 
           "rustonrails::jobs::record_argument(#{ctx_ref}, &crate::jobs::APP, #{value})?"

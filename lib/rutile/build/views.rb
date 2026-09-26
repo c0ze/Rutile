@@ -9,6 +9,12 @@ module Rutile
     # `safe_expr_append=` a `<%== %>` value, as it is.
     module Views
       BUFFER = :@output_buffer
+      # link_to options Action View turns into something else: data-
+      # attributes, rel="nofollow", a second href, or `hidden="hidden"`.
+      LINK_OPTIONS = %w[method remote data aria href].freeze
+      BOOLEAN_ATTRIBUTES = %w[allowfullscreen async autofocus autoplay checked controls default defer disabled formnovalidate
+                              hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly
+                              required reversed selected].freeze
       APPENDS = %i[safe_append= append= safe_expr_append=].freeze
 
       private
@@ -23,7 +29,8 @@ module Rutile
 
         argument = only(node.arguments&.arguments || [], node)
         if node.name == :safe_append=
-          text(argument.receiver.unescaped)
+          # `'text'.freeze`, or the bare literal under frozen_string_literal.
+          text((argument.is_a?(Prism::StringNode) ? argument : argument.receiver).unescaped)
         else
           # `<%= helper do %>` compiles to a block, not parentheses.
           unsupported!(node, "a helper taking a block in <%= %>") unless argument.is_a?(Prism::ParenthesesNode)
@@ -117,11 +124,21 @@ module Rutile
         name, href = in_order(positional) { literal(_1) }
         attributes = trailing ? pairs([trailing], node).map { |key, value| attribute(key, value, node) } : []
         @uses.rt("link_to")
-        rust = "link_to(&#{html_of(name, node)}, &#{href_of(href, positional[1])}, &[#{attributes.join(", ")}])"
+        rust = "link_to(#{link_name(name, node)}, &#{href_of(href, positional[1])}, &[#{attributes.join(", ")}])"
         Code[rust, T::HTML, touch(name, href)]
       end
 
+      # The link's text as HTML; nil (Rails shows the href instead) is None.
+      def link_name(code, node)
+        return "None" if code.type == T::NIL
+        return "Some(&#{html_of(code, node)})" unless code.type == T.nilable(T::STR)
+
+        @uses.rt("html_escape")
+        "#{code.rust}.as_deref().map(html_escape).as_deref()"
+      end
+
       def attribute(key, node, at)
+        unsupported!(at, "link_to's #{key}: option") if LINK_OPTIONS.include?(key) || BOOLEAN_ATTRIBUTES.include?(key)
         value = literal(node)
         unsupported!(at, "link_to's #{key}: other than a String") unless value.type == T::STR
 
@@ -170,7 +187,7 @@ module Rutile
         # An action's name, or a template's path from app/views.
         name = "#{@controller.controller_path}/#{name}" unless name.include?("/") || target.equal?(options["template"])
         render = @controller.template_render(name, node, @path)
-        Code["self.#{render}(req, #{status_code(options["status"], node)})?", T::RESPONSE, :write]
+        Code["self.#{render}(req, #{status_code(options["status"], node)}, None)?", T::RESPONSE, :write]
       end
 
       def json_render?(args)

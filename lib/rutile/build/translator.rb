@@ -117,7 +117,7 @@ module Rutile
           name = node.name.to_s
           @writes[name] += 1
           # One that would shadow the record, the Ctx or a keyword gets another name.
-          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS, *Names::FUNCTIONS].include?(name)
+          reserved = ["ctx", "req", "self", @self_var, *("view" if view?), *KEYWORDS, *Names::FUNCTIONS].include?(name)
           reserved ? (@renames[name] ||= fresh(name)) : @taken << name
         when Prism::RequiredParameterNode, Prism::LocalVariableTargetNode
           @taken << node.name.to_s

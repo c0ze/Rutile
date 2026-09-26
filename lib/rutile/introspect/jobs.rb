@@ -27,6 +27,11 @@ module Rutile
           "queue" => queue.is_a?(Proc) ? nil : queue.to_s,
           # Enqueued when the open transaction commits, rather than at once.
           "after_commit" => job.enqueue_after_transaction_commit == true,
+          # A prefix Rails usually derives from the environment.
+          "queue_prefix" => job.queue_name_prefix,
+          # The app's classes it inherits from, whose bodies declare for it too.
+          "ancestors" => job.ancestors.grep(Class).drop(1).take_while { Source.app_defined?(_1) }
+                            .filter_map { Source.const_location(_1.name)&.fetch("path", nil) },
           "perform" => Source.method_location(job, :perform)
         }
       end

@@ -187,7 +187,7 @@ module Rutile
                   database_url: std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is not set")?,
                   workers: std::env::var("WORKERS").ok().and_then(|w| w.parse().ok()).unwrap_or(5),
                   secret_key_base: std::env::var("SECRET_KEY_BASE").ok(),
-                  redis_url: std::env::var("REDIS_URL").ok(),
+                  redis_url: #{jobs.empty? ? "None" : 'Some(std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379/0".into()))'},
               };
               let running = server::start(#{@name.tr("-", "_")}::routes::routes(), config)?;
               eprintln!("#{@name} listening on {}", running.address);

@@ -24,6 +24,8 @@ module Rutile
           "filters" => controller._process_action_callbacks.map { Callbacks.entry(_1, controller) },
           "rescue_handlers" => controller.rescue_handlers.map { |exception, handler| rescue_handler(exception, handler, controller) },
           "param_wrapping" => param_wrapping(controller),
+          # `cookies` exists in an API controller only through this module.
+          "cookies" => controller.include?(ActionController::Cookies),
           **rendering(controller)
         }
       end

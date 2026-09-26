@@ -21,6 +21,11 @@ Sessions, jobs and views (`feature/sessions-jobs-views`): a Rails app's cookie s
   - Full-stack controllers (`ActionController::Base`) render templates in layouts: implicitly, or with `render :name`, a template path, `template:` or `action:`, and `status:`.
   - View helpers: `link_to`, `content_for`, `provide`, `content_for?`, `yield :name`, `raw`, and a `_path` helper for each named route. Controllers can call the `_path` helpers too.
   - The store gains a storefront whose five tests assert Rails' exact bytes, and the binary passes them.
+- From the branch's review ([plan](docs/superpowers/plans/2026-09-26-sessions-jobs-views.md)):
+  - **Worker:** it survives panics, lost databases and lost Redis connections, and follows Sidekiq's retry options.
+  - **Pages:** they answer only requests that take HTML (406 otherwise). Errors follow the request's format, with the app's `public/<status>.html`. Responses carry Rails' default headers, `Vary: Accept` and, under `force_ssl`, HSTS.
+  - **Session cookie:** it keeps the store's options, refuses what it can't honour, and fails past 4 KB as Rails' does.
+  - **Refused:** `ApplicationJob`'s declarations and `queue_name_prefix`.
 - Also:
   - `where.not` with a nilable value, or one read from a record.
   - Manifests are read as UTF-8 whatever the locale.

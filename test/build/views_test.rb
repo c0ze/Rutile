@@ -27,9 +27,10 @@ class ViewsTest < Minitest::Test
   # An action that renders nothing renders its template in the layout.
   def test_the_storefront
     rust = storefront
-    assert_rust_includes rust, "self.products = Some(Product::all().available().order_asc(\"name\"));\nself.render_storefront_index(req, 200)"
+    assert_rust_includes rust, "self.products = Some(Product::all().available().order_asc(\"name\"));\nself.render_storefront_index(req, 200, Some(\"index\"))"
     assert_rust_includes rust, <<~RUST
-      fn render_storefront_show(&mut self, req: &mut Request, status: u16) -> Result<Response> {
+      fn render_storefront_show(&mut self, req: &mut Request, status: u16, implicit: Option<&str>) -> Result<Response> {
+      View::negotiate(req, "StorefrontController", "storefront/show", implicit)?;
       let mut view = View::default();
       self.view_storefront_show(req, &mut view)?;
       view.lay_out();
@@ -40,7 +41,7 @@ class ViewsTest < Minitest::Test
     assert_rust_includes rust, "// verify_authenticity_token: Rails' forgery protection, which lets GET through"
     assert_rust_includes rust, 'view.text("<h1>In stock</h1>\n");'
     assert_rust_includes rust, 'view.content_for_append("title", &"Everything in stock");'
-    assert_rust_includes rust, 'view.raw(&link_to(&html_escape(req.ctx[other].name.clone().as_deref().unwrap_or_default()), ' \
+    assert_rust_includes rust, 'view.raw(&link_to(req.ctx[other].name.clone().as_deref().map(html_escape).as_deref(), ' \
                                '&crate::routes::shop_product_path(req.ctx[other].id)?, &[("class", "related")]));'
     assert_rust_includes rust, 'view.raw(&view.content_for("title").unwrap_or_else(|| "The Store".to_string()));'
     assert_rust_includes rust, "view.append_content();"
@@ -99,7 +100,7 @@ class ViewsTest < Minitest::Test
   def test_explicit_renders_and_layouts
     render = ->(source) { source.sub("    @products = Product.available.order(:name)\n", "    render :show, status: :not_found\n") }
     rust = storefront(changed("app/controllers/storefront_controller.rb" => render))
-    assert_rust_includes rust, "Ok(self.render_storefront_show(req, status::NOT_FOUND)?)"
+    assert_rust_includes rust, "Ok(self.render_storefront_show(req, status::NOT_FOUND, None)?)"
     app = changed { |m| m["controllers"].find { _1["name"] == "StorefrontController" }["layout"] = false }
     rust = storefront(app)
     refute_includes rust, "view_layouts_storefront"
@@ -114,5 +115,39 @@ class ViewsTest < Minitest::Test
     app = changed("app/controllers/products_controller.rb" => layout)
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(app, "ProductsController").to_rust }
     assert_match(/layout in a class body isn't supported yet/, error.message)
+  end
+
+  # What the review found: booleans and `!` in <%= %>, a local named view,
+  # template text without .freeze (frozen_string_literal, annotations).
+  def test_expressions_and_names_in_templates
+    app = with_template("storefront/index", <<~'RUBY')
+      @output_buffer.safe_append='<p>';
+      view = 1; @output_buffer.append=( view == 1 ); @output_buffer.append=( !@products.nil? );
+      @output_buffer
+    RUBY
+    rust = storefront(app)
+    assert_rust_includes rust, 'view.text("<p>");'
+    assert_rust_includes rust, "let view_2 = 1;"
+    assert_rust_includes rust, "view.append(&(view_2 == 1).to_string());"
+    assert_rust_includes rust, "view.append(&(!(self.products.clone().is_none())).to_string());"
+  end
+
+  def test_link_to_options_rails_transforms_are_refused
+    %w[method remote data href hidden].each do |option|
+      app = with_template("storefront/index", "@output_buffer.append=( link_to \"x\", shop_path, #{option}: \"y\" );\n@output_buffer")
+      refused app, "app/views/storefront/index.html.erb:1: link_to's #{option}: option"
+    end
+    assert_rust_includes storefront(with_template("storefront/index", "@output_buffer.append=( link_to nil, shop_path );\n@output_buffer")),
+                         "view.raw(&link_to(None, &crate::routes::shop_path()?, &[]));"
+  end
+
+  # A Base controller with only Rails' filters needs no request in before().
+  def test_forgery_filters_alone
+    show = ->(source) { source.sub(/  def show\n.*?\n  end\n/m, "  def show\n  end\n") }
+    app = changed("app/controllers/storefront_controller.rb" => show) do |m|
+      m["controllers"].find { _1["name"] == "StorefrontController" }["filters"].pop
+      m["views"].find { _1["name"] == "storefront/show" }["src"] = "@output_buffer.safe_append='x'.freeze;\n@output_buffer"
+    end
+    assert_rust_includes storefront(app), "fn before(&mut self, _req: &mut Request, _action: &str)"
   end
 end

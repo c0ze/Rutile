@@ -147,7 +147,7 @@ module Rutile
       def loop_variable(node, element)
         name, = block_form(node)
         hint = element.kind == :record ? Names.snake(element.model) : "item"
-        reserved = [*Translator::KEYWORDS, *Names::FUNCTIONS, "ctx", "req", "self", @self_var]
+        reserved = [*Translator::KEYWORDS, *Names::FUNCTIONS, "ctx", "req", "self", @self_var, *("view" if view?)]
         name.nil? || %w[_1 it].include?(name) || reserved.include?(name) ? fresh(hint) : name
       end
 
