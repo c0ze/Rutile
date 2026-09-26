@@ -11,7 +11,8 @@ Everyday Ruby (`feature/everyday-ruby`).
 - Relations: `count`, `size`, `sum`, `minimum`, `maximum`, `pluck`, `exists?`, `any?`, `empty?`, `none?` and `first`, in Rails' SQL, typed by the column.
 - `transaction do ... end` in models and controllers, with `raise ActiveRecord::Rollback`.
 - `+=`, `-=` and `*=` on local Integers and Floats, and Float literals.
-- The store example gains stats, low-stock, batch and order-placing endpoints: 16 integration tests, all passing on the Rust build.
+- The store example gains stats, low-stock, batch and order-placing endpoints: 17 integration tests, all passing on the Rust build.
+- From the branch's review ([plan](docs/superpowers/plans/2026-09-26-everyday-ruby.md)): a relation in a local reuses the records it loaded, a rollback puts back the records it touched, a Rollback raised in a callback makes `save` false, enum aggregates are integers, and the crashes and warnings it found are fixed or refused.
 
 ## 0.6.0
 

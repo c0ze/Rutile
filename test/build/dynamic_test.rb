@@ -88,8 +88,9 @@ class DynamicTest < Minitest::Test
     assert_rust_includes rust, "Ok(Value::from(ctx[product].stock))"
     assert_rust_includes rust, "fn tagged(_ctx: &mut Ctx, _product: Handle<Product>, tag: Value, _extra: Value) -> Result<Value> { Ok(tag.clone()) }"
     assert_rust_includes rust, 'let stock = ctx[product].stock; Ok(Product::tagged(ctx, product, Value::from(stock), Value::from("x".to_string()))?)'
-    assert_includes app.fallbacks, "app/models/product.rb:27: the value, str or int or nil, falls back to Value"
-    assert_includes app.fallbacks, "app/models/product.rb:31: untyped in the signature of tagged falls back to Value"
+    line = ->(text) { File.readlines(File.join(app.root, "app/models/product.rb")).index { _1.include?(text) } + 1 }
+    assert_includes app.fallbacks, "app/models/product.rb:#{line.("    stock\n")}: the value, str or int or nil, falls back to Value"
+    assert_includes app.fallbacks, "app/models/product.rb:#{line.("def tagged")}: untyped in the signature of tagged falls back to Value"
   end
 
   def test_what_a_value_cant_be

@@ -22,6 +22,9 @@ class SignaturesTest < Minitest::Test
 
   def problems(app) = (model("Product", app) && app.diagnostics.problems)
 
+  # The line of `app`'s Product model that holds `text`.
+  def model_line(app, text) = File.readlines(File.join(app.root, "app/models/product.rb")).index { _1.include?(text) } + 1
+
   # The line of the store's ProductsController that holds `text`.
   def controller_line(text)
     File.readlines(File.join(StoreHelper::APP, "app/controllers/products_controller.rb")).index { _1.include?(text) } + 1
@@ -126,8 +129,8 @@ class SignaturesTest < Minitest::Test
     assert_rust_includes rust, "if n < 0 { return Ok(None); } if n == 0 { return Ok(Some(0)); } Ok(Some(n))"
     app = product_with("  #: (Integer) -> Integer\n  def countdown(n)\n    return 0 if n == 0\n\n    countdown(n - 1)\n  end\n")
     model("Product", app)
-    assert_equal ["app/models/product.rb:28: countdown calling itself, directly or through another method, isn't supported yet"],
-                 app.diagnostics.problems
+    assert_equal ["app/models/product.rb:#{model_line(app, "    countdown(n - 1)")}: countdown calling itself, directly or through " \
+                  "another method, isn't supported yet"], app.diagnostics.problems
   end
 
   # Names Rust or the runtime already use get another; `_` can't be read
@@ -178,7 +181,8 @@ class SignaturesTest < Minitest::Test
     assert_includes app.diagnostics.problems, "app/controllers/products_controller.rb:#{controller_line("@product.in_stock?(quantity)")}: passing a Symbol to widget?'s label (str) isn't supported yet"
     app = product_with("  #: () -> bool\n  def named? = name == :kettle\n")
     model("Product", app)
-    assert_includes app.diagnostics.problems, "app/models/product.rb:25: == between a String and a Symbol, which Ruby never finds equal, isn't supported yet"
+    assert_includes app.diagnostics.problems, "app/models/product.rb:#{model_line(app, "def named?")}: == between a String and a Symbol, " \
+                                              "which Ruby never finds equal, isn't supported yet"
   end
 
   # Ruby passes a param as it is: nil, or a number, where a String is declared.
@@ -192,7 +196,8 @@ class SignaturesTest < Minitest::Test
   def test_public_send_never_reaches_a_private_method
     app = product_with("  #: () -> bool\n  def peek? = public_send(:hidden?, 1)\n\n  private\n\n  #: (Integer) -> bool\n  def hidden?(n) = n > 0\n")
     model("Product", app)
-    assert_includes app.diagnostics.problems, "app/models/product.rb:25: the private method hidden? from outside Product isn't supported yet"
+    assert_includes app.diagnostics.problems,
+                    "app/models/product.rb:#{model_line(app, "def peek?")}: the private method hidden? from outside Product isn't supported yet"
   end
 
   # A trailing comment on the line above a def isn't its signature.

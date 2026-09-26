@@ -21,7 +21,7 @@ class RoutesFileTest < Minitest::Test
     assert_rust_includes rust, <<~RUST
       // config/routes.rb:3
       fn users_lookup_constraint(req: &Request) -> bool {
-          req.query.get("email").is_present()
+          req.query.get("email").cloned().is_present()
       }
     RUST
   end

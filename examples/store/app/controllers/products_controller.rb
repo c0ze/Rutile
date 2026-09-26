@@ -56,6 +56,15 @@ class ProductsController < ApplicationController
     }
   end
 
+  # Tops up whatever is low, then reports on the same relation: `each`
+  # loaded its records, which `size`, `any?`, `map` and `first` reuse, as
+  # Rails' do; `count` asks the database again.
+  def restock_low
+    low = Product.where(active: true).where("stock < ?", 5)
+    low.each { |product| product.update!(stock: product.stock + 10) }
+    render json: { restocked: low.size, any: low.any?, names: low.map(&:name), first: low.first&.name, still_low: low.count }
+  end
+
   # Batches of two, to walk every batch of a small table.
   def deactivate_sold_out
     deactivated = 0
