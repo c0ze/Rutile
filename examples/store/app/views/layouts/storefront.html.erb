@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= content_for(:title) || "The Store" %></title>
+  </head>
+  <body>
+    <header><%= link_to "The Store", shop_path %></header>
+    <main>
+<%= yield %>
+    </main>
+    <footer>Prices in cents — stock as of this page</footer>
+  </body>
+</html>

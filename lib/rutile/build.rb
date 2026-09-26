@@ -17,7 +17,7 @@ module Rutile
     # Returns where it fell back to Value, `path:line: what` each.
     def self.run(app_dir:, out:, runtime:, name: File.basename(app_dir), manifest: nil, env: "development", vars: {})
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
-      app = App.new(app_dir, JSON.parse(File.read(manifest)))
+      app = App.new(app_dir, JSON.parse(File.read(manifest, encoding: Encoding::UTF_8)))
       Crate.new(app, out, name:, runtime:).write
       app.fallbacks
     end
@@ -47,6 +47,8 @@ require_relative "build/dynamic"
 require_relative "build/sessions"
 require_relative "build/scalars"
 require_relative "build/job_calls"
+require_relative "build/views"
+require_relative "build/paths"
 require_relative "build/expressions"
 require_relative "build/constants"
 require_relative "build/queries"
@@ -60,6 +62,7 @@ require_relative "build/model_methods"
 require_relative "build/behavior"
 require_relative "build/model_file"
 require_relative "build/rescues"
+require_relative "build/templates"
 require_relative "build/controller_file"
 require_relative "build/application_controller_file"
 require_relative "build/routes_file"

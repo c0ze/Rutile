@@ -6,6 +6,7 @@ require_relative "routes"
 require_relative "controllers"
 require_relative "gems"
 require_relative "jobs"
+require_relative "views"
 
 module Rutile
   module Introspect
@@ -27,6 +28,7 @@ module Rutile
           "routes" => Routes.extract(app),
           "controllers" => Controllers.extract,
           "jobs" => Jobs.extract,
+          "views" => Views.extract(app),
           "gems" => Gems.extract
         }
       end

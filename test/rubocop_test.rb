@@ -33,7 +33,7 @@ class RubocopTest < Minitest::Test
       File.write(File.join(dir, "outside.rb"), "eval('1')\n")
       out = File.join(dir, "out.json")
       Dir.chdir(dir) { RuboCop::CLI.new.run(["--only", "Rutile/Subset", "--format", "json", "--out", out, "."]) }
-      JSON.parse(File.read(out))["files"].flat_map do |file|
+      JSON.parse(File.read(out, encoding: Encoding::UTF_8))["files"].flat_map do |file|
         path = file["path"].delete_prefix(File.realpath(dir) + "/").delete_prefix(dir + "/")
         file["offenses"].map { [path, _1["cop_name"], _1.dig("location", "start_line"), _1.dig("location", "start_column"), _1["message"]] }
       end

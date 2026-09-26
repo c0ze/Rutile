@@ -116,6 +116,9 @@ module Rutile
       # is copied, since Ruby may read it again.
       def elements(node)
         receiver = expr(node.receiver)
+        # nil.each raises NoMethodError, as in Ruby: an instance variable
+        # a view iterates may be unset.
+        receiver = unwrap(receiver, node.name.to_s) if receiver.type.nilable?
         receiver = relation_receiver(receiver, node, node.name) unless receiver.type.kind == :list
         if receiver.type.kind == :relation
           need_ctx!(node)

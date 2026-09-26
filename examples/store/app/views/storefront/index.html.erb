@@ -1,0 +1,11 @@
+<% content_for :title, "Everything in stock" %>
+<h1>In stock</h1>
+<% if @products.any? %>
+  <ul>
+  <% @products.each do |product| %>
+    <li><%= link_to product.name, shop_product_path(product) %>: <%= product.stock %> left</li>
+  <% end %>
+  </ul>
+<% else %>
+  <p>Sold out &mdash; come back soon.</p>
+<% end %>

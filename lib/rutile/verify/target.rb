@@ -44,7 +44,10 @@ module Rutile
         # Each cookie is its own header; Rack 3 takes them as an array.
         cookies = response.get_fields("set-cookie")
         headers["set-cookie"] = cookies if cookies
-        [response.code.to_i, headers, [response.body.to_s]]
+        # Net::HTTP reads bytes; a test compares text in the charset sent.
+        body = response.body.to_s
+        body = body.dup.force_encoding(Encoding::UTF_8) if response["content-type"].to_s.downcase.include?("charset=utf-8")
+        [response.code.to_i, headers, [body]]
       end
 
       # What the test sent: Content-Type and every HTTP_* header but the

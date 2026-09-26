@@ -10,7 +10,7 @@ module StoreHelper
     @manifest ||= begin
       out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
       Rutile::Introspect.run(app_dir: APP, env: "test", out:, vars: IntrospectHelper::CLEAN_ENV)
-      JSON.parse(File.read(out))
+      JSON.parse(File.read(out, encoding: Encoding::UTF_8))
     end
   end
 

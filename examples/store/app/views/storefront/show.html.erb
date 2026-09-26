@@ -1,0 +1,15 @@
+<% content_for :title, @product.name %>
+<h1><%= @product.name %></h1>
+<p class="price"><%= @product.price_cents %> cents</p>
+<%# The stock line says why a product can't be bought. %>
+<% if @product.in_stock? %>
+  <p><%= @product.stock %> in stock</p>
+<% else %>
+  <p class="out">Not available</p>
+<% end %>
+<% if @related.any? %>
+  <h2>Also available</h2>
+  <% @related.each do |other| -%>
+    <%= link_to other.name, shop_product_path(other), class: "related" %>
+  <% end -%>
+<% end %>

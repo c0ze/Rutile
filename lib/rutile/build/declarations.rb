@@ -9,6 +9,8 @@ module Rutile
       MODEL = (%w[belongs_to has_many validates validate enum scope primary_abstract_class normalizes has_secure_token] +
                CALLBACKS).freeze
       CONTROLLER = %w[before_action skip_before_action rescue_from wrap_parameters attr_reader].freeze
+      # ActionController::Base has layouts; ActionController::API doesn't.
+      HTML_CONTROLLER = (CONTROLLER + %w[layout]).freeze
       # Modules a class body may include: what they add, Rutile compiles.
       INCLUDES = %w[ActionController::Cookies].freeze
 
@@ -23,7 +25,7 @@ module Rutile
 
               name = node.name.to_s if node.is_a?(Prism::CallNode) && node.receiver.nil?
               next if name && (allowed + VISIBILITY).include?(name)
-              next if name == "include" && allowed == CONTROLLER && included?(node)
+              next if name == "include" && [CONTROLLER, HTML_CONTROLLER].include?(allowed) && included?(node)
 
               what = name || node.type.to_s.delete_suffix("_node").tr("_", " ")
               raise Unsupported.at(path, node, "#{what} in a class body")

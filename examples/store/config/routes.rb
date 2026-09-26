@@ -28,5 +28,9 @@ Rails.application.routes.draw do
     delete :clear
   end
 
+  # The storefront's pages, in HTML.
+  get "shop" => "storefront#index", as: :shop
+  get "shop/:id" => "storefront#show", as: :shop_product
+
   get "up" => "rails/health#show", as: :rails_health_check
 end

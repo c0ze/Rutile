@@ -15,7 +15,7 @@ module Rutile
         when :list then "Vec<#{inner.rust}>"
         else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", date: "Date", value: "Value", json: "Json",
                attributes: "Attributes", record_invalid: "RecordInvalid", invalid_record: "RecordInvalid",
-               unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
+               unit: "()", html: "String" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
         end
       end
     end
@@ -46,6 +46,8 @@ module Rutile
       PARAMS = self[:params]
       UNIT = self[:unit]
       RESPONSE = self[:response]
+      # An html_safe String: a helper's tag, `raw`, what content_for holds.
+      HTML = self[:html]
       REQUEST = self[:request]
       QUERY = self[:query]
       JSON_OPT = self[:json_opt]

@@ -36,6 +36,8 @@ module Rutile
       # it does. Ruby returns an operand; unless both are booleans, only the
       # result's truth is compiled (T::COND).
       def logic(node)
+        return html_or(node) if view? && node.is_a?(Prism::OrNode) && content_for_read?(node.left)
+
         left = expr(node.left)
         lines, right = capture { expr(node.right) }
         right_rust = group(truthy(right, node.right), right, logic: true)

@@ -15,6 +15,10 @@ module Rutile
       private
 
       def controller_call(node, name, args)
+        if view?
+          found = view_call(node, name, args)
+          return found if found
+        end
         case name
         when "params" then args.empty? ? Code["req.params", T::PARAMS] : nil
         when "request" then args.empty? ? Code["req", T::REQUEST] : nil
@@ -24,7 +28,7 @@ module Rutile
         else
           return ivar_named(name, node) if args.empty? && @controller.reader?(name)
 
-          type = @controller.helper(name, node) or return nil
+          type = @controller.helper(name, node) or return path_helper(node, name, args)
           values = call_arguments(@controller.signature(name), args, node, name, bind: :all)
           Code["self.#{Names.method(name)}(#{["req", *values].join(", ")})?", type, :write,
                hint: name.end_with?("_params") ? "attributes" : name.delete_suffix("?").delete_suffix("!")]
@@ -32,6 +36,8 @@ module Rutile
       end
 
       def render(node, args)
+        return render_template(node, args) if @controller.respond_to?(:html?) && @controller.html? && !json_render?(args)
+
         options = pairs(args, node).to_h
         extra = options.keys - %w[json status]
         unsupported!(node, "render with #{extra.join(", ")}") unless extra.empty?

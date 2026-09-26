@@ -14,7 +14,7 @@ module Rutile
     def run(app_dir:, manifest: nil, env: "development", vars: {})
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
       diagnostics = Build::Diagnostics.new
-      app = Build::App.new(app_dir, JSON.parse(File.read(manifest)), diagnostics:)
+      app = Build::App.new(app_dir, JSON.parse(File.read(manifest, encoding: Encoding::UTF_8)), diagnostics:)
       Rules.scan(app_dir, diagnostics)
       Gems.check(app.manifest, diagnostics)
       Files.check(app_dir, diagnostics)

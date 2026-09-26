@@ -32,12 +32,15 @@ module Rutile
       include Sessions
       include Scalars
       include JobCalls
+      include Views
+      include PathCalls
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
       # lambda). `result` is false for functions that don't return Result.
       # `returns` is the type a signature declares for the value the body ends on.
-      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false, returns: nil)
+      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false, returns: nil,
+                     view: nil)
         @returns = returns
         @app = app
         @path = path
@@ -52,7 +55,9 @@ module Rutile
         @depth = 0
         @locals = {}
         @writes = Hash.new(0)
-        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS, *Names::FUNCTIONS].compact)
+        # A template or a layout (Views) writes to `view`.
+        @view = view
+        @taken = Set.new(["ctx", "req", "self", self_var, *("view" if view), *KEYWORDS, *Names::FUNCTIONS].compact)
         @renames = {}
         @params = Set.new
         @lines = []
@@ -146,7 +151,7 @@ module Rutile
         when Prism::CallOrWriteNode then or_assign(node)
         when Prism::ReturnNode then early_return(node)
         else
-          return if block_statement(node)
+          return if view_statement(node) || block_statement(node)
 
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE

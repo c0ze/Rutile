@@ -16,7 +16,7 @@ module IntrospectHelper
     @manifest_text ||= begin
       out = File.join(Dir.mktmpdir("rutile"), "manifest.json")
       Rutile::Introspect.run(app_dir: APP, env: "test", out: out, vars: CLEAN_ENV)
-      File.read(out)
+      File.read(out, encoding: Encoding::UTF_8)
     end
   end
 
