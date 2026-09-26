@@ -222,9 +222,10 @@ module Rutile
       def inverse(assoc)
         name = assoc.fetch("inverse_of") or return "None"
         back = @app.association(assoc["class_name"], name)
-        unless back && back["macro"] == "belongs_to" && back["class_name"] == @name
-          raise Unsupported, "#{@path}: has_many :#{assoc["name"]} with the inverse :#{name} isn't supported yet"
-        end
+        # The runtime ties the two through the foreign key it sets; Rails
+        # links an inverse on another key in memory only.
+        same = back && back["macro"] == "belongs_to" && back["class_name"] == @name && back["foreign_key"] == assoc["foreign_key"]
+        raise Unsupported, "#{@path}: has_many :#{assoc["name"]} with the inverse :#{name} isn't supported yet" unless same
         "Some(&#{assoc["class_name"]}::#{Names.constant(name)})"
       end
 

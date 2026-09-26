@@ -31,6 +31,11 @@ class ModelFileTest < Minitest::Test
     comments = ->(m) { m["models"].find { _1["name"] == "Post" }["associations"].find { _1["name"] == "comments" } }
     none = app_with { comments.(_1)["inverse_of"] = nil }
     assert_rust_includes rust("Post", none), 'HasMany::new("comments", "post_id", None);'
+    # inverse_of: naming a belongs_to on another key is linked in memory by
+    # Rails only; the runtime links through the key it sets.
+    other_key = app_with { comments.(_1)["foreign_key"] = "parent_id" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", other_key) }
+    assert_equal "app/models/post.rb: has_many :comments with the inverse :post isn't supported yet", error.message
   end
 
   def test_enum_predicates
@@ -239,6 +244,9 @@ class ModelFileTest < Minitest::Test
   def test_code_outside_the_class_is_refused
     app = scratch_app({ "app/models/post.rb" => ->(ruby) { "require \"json\"\n#{ruby}Post.class_eval do\n  def title = \"x\"\nend\n" } })
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
+    assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
+    patched = scratch_app({ "app/models/post.rb" => ->(ruby) { "#{ruby}require_relative \"../../config/post_patch\"\n" } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(patched, "Post").to_rust }
     assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
   end
 

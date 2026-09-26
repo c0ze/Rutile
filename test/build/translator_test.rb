@@ -182,6 +182,7 @@ class TranslatorTest < Minitest::Test
   def test_symbols_are_not_strings_where_ruby_can_tell
     message = "snippet.rb:1: == between a string and a symbol isn't supported yet"
     assert_equal message, refused('self.title = "x" if status == :published')
+    assert_equal "snippet.rb:1: < between a string and a symbol isn't supported yet", refused('self.title = "x" if title < :b')
     assert_equal message, refused("state = :published\nself.title = \"x\" if status == state").sub(":2:", ":1:")
     assert_rust_includes callback('self.title = "x" if :a == :a'), "if \"a\" == \"a\" {"
     assert_equal "snippet.rb:1: an error message that isn't a string isn't supported yet", refused("errors.add(:title, :blank)")

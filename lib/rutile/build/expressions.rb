@@ -41,6 +41,8 @@ module Rutile
                elsif %w[== !=].include?(name)
                  equality(left, right, name, node)
                else
+                 # Ruby can't order a Symbol against a String at all.
+                 unsupported!(node, "#{name} between a string and a symbol") if !left.extra[:symbol] != !right.extra[:symbol]
                  left = unwrap(left, name)
                  right = unwrap(right, name)
                  unless left.type == right.type && ORDERED.include?(left.type.kind)
