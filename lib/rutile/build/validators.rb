@@ -39,10 +39,14 @@ module Rutile
         case kind
         when "presence" then "Check::Presence"
         when "uniqueness" then "Check::Uniqueness { scope: #{Names.str_slice(scope(options["scope"]))} }"
-        when "length" then "Check::Length { minimum: #{some(options["minimum"])}, maximum: #{some(options["maximum"])} }"
+        when "length"
+          bounds = options.values_at("minimum", "maximum")
+          unsupported!("a length validator bound that isn't an integer") unless bounds.all? { _1.nil? || _1.is_a?(Integer) }
+          "Check::Length { minimum: #{some(bounds[0])}, maximum: #{some(bounds[1])} }"
         when "numericality" then numericality(options)
         when "format"
-          regexp = options.fetch("with")
+          regexp = options["with"]
+          unsupported!("a format validator whose with: isn't a regexp") unless regexp.is_a?(Hash) && regexp.key?("regexp")
           pattern = RubyRegexp.to_rust(regexp["regexp"], regexp["options"], @path)
           @uses.rt("Regex")
           %(Check::Format(Regex::new(#{Names.raw(pattern)}).expect("the Ruby regexp compiles")))

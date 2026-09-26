@@ -197,7 +197,9 @@ module Rutile
         # A Symbol is a string in Rust; `symbol` keeps the difference where
         # Ruby would see it (`"done" == :done` is false).
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true, symbol: true]
-        when Prism::IntegerNode then Code[node.value.to_s, T::INT]
+        when Prism::IntegerNode
+          unsupported!(node, "an integer past 64 bits") unless node.value.bit_length < 64
+          Code[node.value.to_s, T::INT]
         when Prism::NilNode then Code["None", T::NIL]
         when Prism::AndNode, Prism::OrNode then logic(node)
         when Prism::IfNode then ternary(node)

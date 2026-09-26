@@ -117,6 +117,19 @@ class ValidatorsTest < Minitest::Test
     end
   end
 
+  # These crashed the build (or wrote Rust that doesn't compile) instead of
+  # being reported, which also ended `rutile check` at the first one.
+  def test_bounds_and_patterns_that_are_not_literals_are_refused
+    app = tracker_with("Task") { |validators| validators.find { _1["kind"] == "length" }["options"]["maximum"] = "max_title" }
+    assert_equal ["app/models/task.rb: a length validator bound that isn't an integer isn't supported yet"], problems(app, "Task")
+    blog = app_with do |m|
+      user = m["models"].find { _1["name"] == "User" }
+      user["validators"].find { _1["kind"] == "format" }["options"]["with"] = { "proc" => nil }
+    end
+    error = assert_raises(Rutile::Build::Unsupported) { rust("User", blog) }
+    assert_equal "app/models/user.rb: a format validator whose with: isn't a regexp isn't supported yet", error.message
+  end
+
   # An unused import is a warning, which fails the build.
   def test_number_is_imported_only_when_a_comparison_uses_it
     app = tracker_with("Task") { estimate(_1)["options"] = { "only_integer" => true } }

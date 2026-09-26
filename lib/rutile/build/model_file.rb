@@ -102,6 +102,10 @@ module Rutile
         base = @model.fetch("base_class")
         raise Unsupported, "#{@path}: single-table inheritance from #{base} isn't supported yet" unless base == @name
 
+        @model["enums"].each do |attribute, values|
+          raise Unsupported, "#{@path}: enum :#{attribute} with values other than integers isn't supported yet" unless values.values.all?(Integer)
+        end
+
         locking = @model.fetch("locking_column")
         raise Unsupported, "#{@path}: optimistic locking on #{locking} isn't supported yet" if locking
 
@@ -138,7 +142,7 @@ module Rutile
         return "" if default.nil? || column["default_function"]
 
         if (values = @app.enum(@name, column["name"]))
-          label = values.key(Integer(default))
+          label = values.key(Integer(default, exception: false))
           return label ? " = #{Names.str(label)}" : ""
         end
         case column["type"]

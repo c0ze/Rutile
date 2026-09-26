@@ -187,6 +187,10 @@ class TranslatorTest < Minitest::Test
     assert_equal "snippet.rb:1: an error message that isn't a string isn't supported yet", refused("errors.add(:title, :blank)")
   end
 
+  def test_an_integer_literal_past_64_bits_is_refused
+    assert_equal "snippet.rb:1: an integer past 64 bits isn't supported yet", refused("self.comments_count = #{2**64}")
+  end
+
   def test_equality_with_literals_and_nil
     assert_rust_includes callback("self.body = \"x\" if title == \"a\" || user_id == nil"),
                          'if ctx[post].title.clone().as_deref() == Some("a") || ctx[post].user_id.is_none() {'
