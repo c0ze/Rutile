@@ -2,6 +2,16 @@
 
 Rutile and RustOnRails share version numbers; each minor version is one milestone of [docs/roadmap.md](docs/roadmap.md).
 
+## 0.8.0
+
+The Value fallback (`feature/value-fallback`).
+
+- Where no static type reaches a value (a param, `untyped` in a signature, a local assigned two classes, an `if` or a method ending on different classes), it's a `rustonrails::Value` and Ruby's operators dispatch at run time with Ruby's results and errors.
+- `rutile build` lists each fallback (`path:line: … falls back to Value`); `rutile check` lists them as notes.
+- Without a signature, a method's early returns type it: one class, an Option of it, or a Value.
+- Statically: `/` and `%` with Ruby's floor semantics and ZeroDivisionError, an Integer with a Float as a Float, `String + String`, `T` and `T?` branches as `T?`, and nil interpolating as `""`.
+- The store gains `double` and `availability`: 20 integration tests pass on the Rust build.
+
 ## 0.7.0
 
 Everyday Ruby (`feature/everyday-ruby`).
