@@ -13,8 +13,9 @@ module Rutile
     class Error < StandardError; end
 
     HOOK = File.expand_path("verify/hook.rb", __dir__)
-    # Prints the test database's URL from inside the app.
-    DATABASE_URL = <<~'RUBY'.freeze
+    # Prints the test database's URL and the app's secret_key_base (for
+    # the session cookie) from inside the app.
+    SETTINGS = <<~'RUBY'.freeze
       config = ActiveRecord::Base.configurations.configs_for(env_name: "test").first.configuration_hash
       url = config[:url] || begin
         user = [config[:username], config[:password]].compact.map { ERB::Util.url_encode(_1.to_s) }.join(":")
@@ -22,6 +23,7 @@ module Rutile
         "postgres://#{"#{user}@" unless user.empty?}#{config[:host] || "localhost"}#{port}/#{config[:database]}"
       end
       puts "RUTILE_DATABASE_URL=#{url}"
+      puts "RUTILE_SECRET_KEY_BASE=#{Rails.application.secret_key_base}"
     RUBY
 
     module_function
@@ -36,7 +38,9 @@ module Rutile
       env = vars.merge("RAILS_ENV" => "test")
       rails!(env, app_dir, "db:prepare")
       port = free_port
-      server_env = { "DATABASE_URL" => database_url(app_dir, env), "BIND" => "127.0.0.1:#{port}", "WORKERS" => "4" }
+      database_url, secret_key_base = settings(app_dir, env)
+      server_env = { "DATABASE_URL" => database_url, "SECRET_KEY_BASE" => secret_key_base, "BIND" => "127.0.0.1:#{port}",
+                     "WORKERS" => "4" }
       server = spawn(server_env, binary)
       begin
         Servers.wait_for_up("http://127.0.0.1:#{port}/up", server)
@@ -68,9 +72,11 @@ module Rutile
       File.join(metadata["target_directory"], "release", package.fetch("name"))
     end
 
-    def database_url(app_dir, env)
-      output = Rutile.unbundled { capture!(env, File.join(app_dir, "bin/rails"), "runner", DATABASE_URL, chdir: app_dir) }
-      output[/^RUTILE_DATABASE_URL=(.+)$/, 1] or raise Error, "couldn't read the test database's URL from #{app_dir}"
+    # [the test database's URL, secret_key_base]
+    def settings(app_dir, env)
+      output = Rutile.unbundled { capture!(env, File.join(app_dir, "bin/rails"), "runner", SETTINGS, chdir: app_dir) }
+      url = output[/^RUTILE_DATABASE_URL=(.+)$/, 1] or raise Error, "couldn't read the test database's URL from #{app_dir}"
+      [url, output[/^RUTILE_SECRET_KEY_BASE=(.+)$/, 1]]
     end
 
     def rails!(env, app_dir, *args)

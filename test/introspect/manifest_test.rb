@@ -15,7 +15,7 @@ class ManifestTest < Minitest::Test
 
   def test_config
     assert_equal(
-      { "api_only" => true, "time_zone" => "UTC", "default_locale" => "en", "active_record_default_timezone" => "utc" },
+      { "api_only" => true, "time_zone" => "UTC", "default_locale" => "en", "active_record_default_timezone" => "utc", "session" => nil },
       manifest["config"]
     )
   end

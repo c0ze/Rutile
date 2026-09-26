@@ -225,12 +225,14 @@ module Rutile
 
       def wrap_parameters
         wrap = @controller["param_wrapping"] or return nil
-        unless wrap["format"] == ["json"] && wrap["include"] && wrap["exclude"].nil?
+        unless wrap["format"] == ["json"] && wrap["exclude"].nil?
           unsupported!("wrap_parameters other than the default for a model")
         end
 
-        "fn wrap_parameters() -> Option<(&'static str, &'static [&'static str])> {\n" \
-          "Some((#{Names.str(wrap["name"])}, #{Names.str_slice(wrap["include"])}))\n}"
+        # No model to list attributes: every body key goes under the name.
+        include = wrap["include"] ? "Some(#{Names.str_slice(wrap["include"])})" : "None"
+        "fn wrap_parameters() -> Option<(&'static str, Option<&'static [&'static str]>)> {\n" \
+          "Some((#{Names.str(wrap["name"])}, #{include}))\n}"
       end
 
       def unsupported!(what) = raise(Unsupported, "#{@path}: #{what} isn't supported yet")

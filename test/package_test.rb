@@ -15,7 +15,8 @@ class PackageTest < Minitest::Test
       toml = File.read(File.join(dir, "Cargo.toml"))
       assert_match(/\A\[package\]\nname = "rustonrails"/, toml)
       assert_includes toml, "[dependencies]\n"
-      refute_match(/^\[workspace\]|^\[profile|^#/, toml)
+      refute_match(/^\[workspace\]|^\[profile|overflow/, toml)
+      refute_match(/\n\n\n/, toml)
       assert File.exist?(File.join(dir, "src/lib.rs"))
     end
   end

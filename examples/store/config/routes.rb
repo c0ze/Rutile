@@ -22,5 +22,10 @@ Rails.application.routes.draw do
     end
   end
 
+  resource :cart, only: :show do
+    post :add
+    delete :clear
+  end
+
   get "up" => "rails/health#show", as: :rails_health_check
 end

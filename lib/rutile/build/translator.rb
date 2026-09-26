@@ -29,6 +29,8 @@ module Rutile
       include Constants
       include Queries
       include Dynamic
+      include Sessions
+      include Scalars
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route

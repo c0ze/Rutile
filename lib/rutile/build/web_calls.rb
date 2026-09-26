@@ -20,6 +20,7 @@ module Rutile
         when "request" then args.empty? ? Code["req", T::REQUEST] : nil
         when "render" then render(node, args)
         when "head" then head(node, args)
+        when "session", "cookies", "reset_session" then session_call(node, name, args)
         else
           return ivar_named(name, node) if args.empty? && @controller.reader?(name)
 

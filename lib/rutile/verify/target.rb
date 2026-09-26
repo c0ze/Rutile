@@ -41,6 +41,9 @@ module Rutile
         @forwarded += 1
         @after_request&.call
         headers = RETURNED.to_h { [_1, response[_1]] }.compact
+        # Each cookie is its own header; Rack 3 takes them as an array.
+        cookies = response.get_fields("set-cookie")
+        headers["set-cookie"] = cookies if cookies
         [response.code.to_i, headers, [response.body.to_s]]
       end
 

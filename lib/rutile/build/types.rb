@@ -55,6 +55,8 @@ module Rutile
       RECORD_INVALID = self[:record_invalid]
       INVALID_RECORD = self[:invalid_record]
       HEADERS = self[:headers]
+      SESSION = self[:session]
+      COOKIES = self[:cookies]
       NIL = self[:nil]
       COND = self[:cond]
     end

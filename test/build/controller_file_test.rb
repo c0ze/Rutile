@@ -20,8 +20,8 @@ class ControllerFileTest < Minitest::Test
 
   def test_wrapping_filters_and_rescue_become_the_controller_trait
     posts = rust("PostsController")
-    assert_rust_includes posts, 'Some(("post", &["body", "comments_count", "created_at", "id", "published_at", "status", ' \
-                                '"title", "updated_at", "user_id"]))'
+    assert_rust_includes posts, 'Some(("post", Some(&["body", "comments_count", "created_at", "id", "published_at", "status", ' \
+                                '"title", "updated_at", "user_id"])))'
     assert_rust_includes posts, 'if matches!(action, "destroy" | "show" | "update") { self.set_post(req)?; } Ok(None)'
     assert_rust_includes posts, "Error::RecordNotFound { .. } => application::not_found(req), other => Err(other),"
     assert_includes posts, "use super::application;"

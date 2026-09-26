@@ -9,6 +9,8 @@ module Rutile
       MODEL = (%w[belongs_to has_many validates validate enum scope primary_abstract_class normalizes has_secure_token] +
                CALLBACKS).freeze
       CONTROLLER = %w[before_action skip_before_action rescue_from wrap_parameters attr_reader].freeze
+      # Modules a class body may include: what they add, Rutile compiles.
+      INCLUDES = %w[ActionController::Cookies].freeze
 
       module_function
 
@@ -21,12 +23,18 @@ module Rutile
 
               name = node.name.to_s if node.is_a?(Prism::CallNode) && node.receiver.nil?
               next if name && (allowed + VISIBILITY).include?(name)
+              next if name == "include" && allowed == CONTROLLER && included?(node)
 
               what = name || node.type.to_s.delete_suffix("_node").tr("_", " ")
               raise Unsupported.at(path, node, "#{what} in a class body")
             end
           end
         end
+      end
+
+      def included?(node)
+        args = node.arguments&.arguments || []
+        !args.empty? && args.all? { _1.respond_to?(:full_name) && INCLUDES.include?(_1.full_name.delete_prefix("::")) }
       end
 
       # The class-body calls named `name` in `tree`: `attr_reader :current_user`.

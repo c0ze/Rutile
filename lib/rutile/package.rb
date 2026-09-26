@@ -56,7 +56,7 @@ module Rutile
       FileUtils.cp_r(File.join(runtime, "src"), into)
       sections = File.read(manifest).split(/^(?=\[)/).select { _1.start_with?("[package]", "[dependencies]") }
       # A comment just before a dropped section is that section's.
-      File.write(File.join(into, "Cargo.toml"), sections.map { _1.sub(/(\n#[^\n]*)+\n*\z/, "\n") }.join("\n").rstrip + "\n")
+      File.write(File.join(into, "Cargo.toml"), sections.map { _1.sub(/(\n#[^\n]*)*\s*\z/, "") + "\n" }.join("\n"))
     end
 
     def cargo_toml(name)
