@@ -49,7 +49,7 @@ The commands, in the order you'd run them:
 3. `rutile build APP --out DIR --runtime RUSTONRAILS` writes a Cargo crate that depends on `rustonrails`, formats it and checks it with `cargo check`. `cargo build --release` gives you the binary.
 4. Verify (for now `rake example:verify`, with `EXAMPLE=tracker` for the tracker) runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
 
-The full design is in [docs/design.md](docs/design.md).
+The full design is in [docs/design.md](docs/design.md), and what comes next in [docs/roadmap.md](docs/roadmap.md).
 
 ## Development
 
