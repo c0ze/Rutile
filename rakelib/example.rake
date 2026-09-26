@@ -1,5 +1,5 @@
 require_relative "../lib/rutile/unbundled"
-require_relative "support/servers"
+require_relative "../lib/rutile/verify"
 
 # A throwaway Postgres cluster under tmp/pg for the example app, using the
 # PostgreSQL that mise.toml pins. It never touches a system server.
@@ -71,19 +71,8 @@ namespace :example do
   desc "Run the example app's integration tests against the Rust port"
   task verify: :build do
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
-    port = ENV.fetch("VERIFY_PORT", "54400")
-    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE }
-    env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
-            "WORKERS" => "4" }
-    ExampleServers.ensure_port_free(port)
-    server = spawn(env, File.join(rust, "target/release", EXAMPLE))
-    begin
-      ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", server)
-      target = { "RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1" }
-      Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { sh(EXAMPLE_ENV.merge(target), "bin/rails", "test", "test/integration") } }
-    ensure
-      ExampleServers.stop_all([server])
-    end
+    passed = Rutile::Verify.run(app_dir: EXAMPLE_APP, crate: File.join(rust, "examples", EXAMPLE), vars: EXAMPLE_ENV)
+    abort "verify failed for #{EXAMPLE}" unless passed
   end
 
   desc "Run the example app's own test suite"

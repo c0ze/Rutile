@@ -9,7 +9,8 @@ Gem::Specification.new do |spec|
   spec.summary = "Compiles Rails apps written in a strict subset of Ruby to Rust."
   spec.required_ruby_version = ">= 3.4"
 
-  spec.files = Dir["lib/**/*.rb", "exe/*", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "exe/*", "config/*.yml", "README.md"]
+  spec.metadata["default_lint_roller_plugin"] = "RuboCop::Rutile::Plugin"
   spec.bindir = "exe"
   spec.executables = ["rutile"]
   spec.require_paths = ["lib"]

@@ -1,0 +1,7 @@
+# Defaults for the rutile RuboCop plugin (lib/rutile/rubocop.rb).
+Rutile/Subset:
+  Description: "Flags Ruby that Rutile can't compile to Rust."
+  Enabled: true
+  Include:
+    - "app/**/*.rb"
+    - "lib/**/*.rb"

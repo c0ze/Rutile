@@ -22,10 +22,23 @@ module Rutile
         end
       end
 
-      def initialize(path, diagnostics)
+      # Each finding in `source` as [message, start offset, end offset],
+      # in bytes: what the RuboCop plugin reports.
+      def self.findings(source, path = "(source)")
+        result = Prism.parse(source)
+        return [] if result.failure?
+
+        found = []
+        new(path, nil) { |message, node| found << [message, node.location.start_offset, node.location.end_offset] }.visit(result.value)
+        found
+      end
+
+      # Findings go to `diagnostics`, or to the block with their node.
+      def initialize(path, diagnostics, &on_finding)
         super()
         @path = path
         @diagnostics = diagnostics
+        @on_finding = on_finding
         @depth = 0
       end
 
@@ -94,7 +107,10 @@ module Rutile
       end
 
       def report(node, what, fix)
-        @diagnostics.problem("#{@path}:#{node.location.start_line}: #{what} can't be compiled; use #{fix}")
+        message = "#{what} can't be compiled; use #{fix}"
+        return @on_finding.call(message, node) if @on_finding
+
+        @diagnostics.problem("#{@path}:#{node.location.start_line}: #{message}")
       end
     end
   end

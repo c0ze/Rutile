@@ -18,10 +18,14 @@ module Rutile
       attr_reader :routes
 
       # `after_request` runs once each response is back.
+      # Requests forwarded so far.
+      attr_reader :forwarded
+
       def initialize(base_url, routes = nil, &after_request)
         @uri = URI(base_url)
         @routes = routes
         @after_request = after_request
+        @forwarded = 0
       end
 
       def call(env)
@@ -34,6 +38,7 @@ module Rutile
         headers(env).each { |header, value| outgoing[header] = value }
         outgoing.body = body unless body.empty?
         response = Net::HTTP.start(@uri.host, @uri.port) { |http| http.request(outgoing) }
+        @forwarded += 1
         @after_request&.call
         headers = RETURNED.to_h { [_1, response[_1]] }.compact
         [response.code.to_i, headers, [response.body.to_s]]
@@ -57,6 +62,7 @@ module Rutile
         target = new(base_url, Rails.application.routes) { ActiveRecord::Base.clear_query_caches_for_current_thread }
         ActionDispatch::IntegrationTest.app = target
         ActiveSupport::TestCase.use_transactional_tests = false
+        target
       end
     end
   end
