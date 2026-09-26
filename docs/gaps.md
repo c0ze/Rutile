@@ -53,7 +53,7 @@ Plan 11 (`docs/superpowers/plans/2026-09-25-model-methods-and-blocks.md`):
 Each of these is refused with the file and line rather than compiled wrong. They're the constructs this round met and left for later, roughly in the order a typical Rails app would hit them.
 
 - **Methods that call themselves**, directly or through another. Ruby stops a runaway recursion with SystemStackError; a Rust stack overflow would abort the server. (Methods with parameters compile since 0.6.0, typed by rbs-inline signatures.)
-- **Blocks other than `map` over a relation**: `each`, `select`, `sum`, `find_each`, `map(&:name)`, numbered and `it` parameters, and `map` over a list `map` returned.
+- **Blocks with more than one parameter** (`each_with_index`, `each_with_object`, hashes), `any?`/`all?`/`count` with a block, `min`/`max`/`average` of an array, `/` and `%`. (`each`, `select`, `reject`, `sum`, `find_each`, `map(&:name)`, `it` and `_1`, aggregates and transactions compile since 0.7.0.)
 - **Callbacks**: `after_initialize` and `after_find` blocks or methods of the app's own; `saved_change_to_x?` (the runtime keeps the changes a save will make, not those it made); callback conditions naming an app method.
 - **Normalizers** on columns other than strings, with `apply_to_nil`, more than one on an attribute, with `it` or numbered parameters, or ones that could fail.
 - **Methods Rails itself calls**: a model method replacing one of Active Record's (`destroy`, `readonly?`, `self.generate_unique_secure_token`), or a column's or association's reader. Rutile only controls its own call sites, so RustOnRails would call its own.

@@ -2,6 +2,17 @@
 
 Rutile and RustOnRails share version numbers; each minor version is one milestone of [docs/roadmap.md](docs/roadmap.md).
 
+## 0.7.0
+
+Everyday Ruby (`feature/everyday-ruby`).
+
+- Blocks: `each` and `find_each` (batches of 1000 by id, or `batch_size:`) as statements; `map`, `select`, `filter`, `reject` and `sum` as values; over a relation's records or an array. Blocks name their element `|x|`, `it` or `_1`, or pass a method name (`&:title`).
+- Arrays: `size`, `count`, `length`, `empty?`, `any?`, `present?`, `blank?`, `first`, `last` and `sum` with `Array#sum`'s rules.
+- Relations: `count`, `size`, `sum`, `minimum`, `maximum`, `pluck`, `exists?`, `any?`, `empty?`, `none?` and `first`, in Rails' SQL, typed by the column.
+- `transaction do ... end` in models and controllers, with `raise ActiveRecord::Rollback`.
+- `+=`, `-=` and `*=` on local Integers and Floats, and Float literals.
+- The store example gains stats, low-stock, batch and order-placing endpoints: 16 integration tests, all passing on the Rust build.
+
 ## 0.6.0
 
 Methods with parameters, typed by rbs-inline signatures (`feature/method-signatures`).
