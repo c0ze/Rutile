@@ -24,7 +24,7 @@ Against the design:
 | 0.7.0 (done) | `feature/everyday-ruby` | `each`, `select`, `sum`, `find_each`, `map(&:name)`, aggregates (`count`, `sum`, `minimum`, `maximum`, `exists?`), and `transaction` blocks in app code | Each compiles to what Rails runs (the same SQL for aggregates, batches of 1000 for `find_each`, a rollback on an exception) |
 | 0.8.0 (done) | `feature/value-fallback` | The dynamic `Value` fallback for values no static type reaches, with a report of where it was used | Code that only fails to type today compiles to `Value` operations with Ruby's semantics, and `rutile build` lists each fallback |
 | 0.9.0 (done) | `feature/tooling` | `rutile verify`, a deployable binary and container image, and the subset rules as a RuboCop plugin | An app goes from `rutile check` to a running container with `rutile` commands alone, and RuboCop flags the subset in editors |
-| 0.10.0 | `feature/sessions-jobs-views` | Sessions and cookies compatible with Rails', Sidekiq-compatible jobs, then ERB views | A Rails sidecar and the Rust binary read each other's sessions, Ruby and Rust workers share a Sidekiq queue, and an ERB page renders the bytes Rails does |
+| 0.10.0 (done) | `feature/sessions-jobs-views` | Sessions and cookies compatible with Rails', Sidekiq-compatible jobs, then ERB views | A Rails sidecar and the Rust binary read each other's sessions, Ruby and Rust workers share a Sidekiq queue, and an ERB page renders the bytes Rails does |
 
 ## After 0.10
 

@@ -73,13 +73,23 @@ $ curl -s localhost:54502/products/stats
 {"count":3,"active":2,"units":7,"cheapest_cents":800,"priciest_cents":4200,...}
 ```
 
-The binary reads three environment variables:
+The binary reads these environment variables:
 
 - `DATABASE_URL`, which is required;
 - `BIND`, which defaults to `0.0.0.0:3000` in the image;
-- `WORKERS`, which defaults to 5, like Puma's threads.
+- `WORKERS`, which defaults to 5, like Puma's threads;
+- `SECRET_KEY_BASE`, the Rails app's own, for the session cookie (since 0.10.0). It's needed only by an app with a session store. With the same secret, Rails and the binary read each other's session cookies;
+- `REDIS_URL`, Sidekiq's, for an app whose jobs run on Sidekiq (since 0.10.0). It defaults to `redis://localhost:6379/0`, as Sidekiq's does.
 
 `GET /up` answers 200 for health checks, as Rails' does. Migrations stay Rails': run `bin/rails db:migrate` from the Ruby app, which remains the source.
+
+An app with jobs gets a worker in the same binary: `store work` takes jobs off the app's Sidekiq queues and runs them. It takes them as readily from Rails' `perform_later` as from the binary's own. Run it beside the server, or in place of `bundle exec sidekiq`:
+
+```
+$ docker run --network host -e DATABASE_URL=... -e REDIS_URL=redis://localhost:6379/0 store:0.10.0 store work
+```
+
+A failed job goes on Sidekiq's retry set with Sidekiq's backoff, and on its dead set after 25 retries. Sidekiq's web UI shows it like any other. The worker runs every Active Job payload on the queues it's given. Give it queues whose jobs the Rust build has: a job class it doesn't have fails into the retry set, where a Ruby worker may take it after the backoff.
 
 ## RuboCop
 

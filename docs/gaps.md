@@ -59,6 +59,28 @@ Each of these is refused with the file and line rather than compiled wrong. They
 - **Methods Rails itself calls**: a model method replacing one of Active Record's (`destroy`, `readonly?`, `self.generate_unique_secure_token`), or a column's or association's reader. Rutile only controls its own call sites, so RustOnRails would call its own.
 - **A `rescue` or `ensure` around a whole method body**, and enum methods renamed by `prefix:` or `suffix:`.
 - **Hashes** anywhere but a literal rendered as JSON or merged into `as_json`: reading keys back, `as_json` of a relation then `merge`, or a String and a Symbol key of the same name in one hash, which Rails' JSON encoder raises on.
+- **Sessions and cookies** beyond Rails' cookie store with scalar values:
+  - other session stores;
+  - a hash or an array in the session (it raises);
+  - `flash`;
+  - signed and encrypted cookie jars;
+  - cookie options (`expires`, `domain`, `secure`, `httponly` on plain cookies).
+- **Jobs** beyond Active Job on Sidekiq:
+  - other adapters;
+  - `enqueue_after_transaction_commit`;
+  - `set(wait:)` and scheduled jobs;
+  - `retry_on`, `discard_on` and job callbacks;
+  - queues a block chooses;
+  - arguments other than records, Integers, Floats, Strings, booleans and nil (Time, Date, Symbol, Hash and Array go through Active Job's own serializers);
+  - plain `Sidekiq::Job` classes.
+- **Views** beyond ERB templates in layouts:
+  - partials and collection rendering;
+  - helpers that take a block (`form_with`, `link_to ... do`);
+  - Action View helpers other than `link_to`, `content_for`, `provide`, `raw` and the `_path` helpers (`number_to_currency`, `pluralize`, `time_ago_in_words`, `image_tag`, `stylesheet_link_tag`, `csrf_meta_tags`, ...), and the app's own `app/helpers`;
+  - `_url` helpers and `redirect_to`;
+  - templates in other formats or handlers;
+  - a layout a method or a condition chooses;
+  - a non-GET route to an `ActionController::Base` controller, which would need Rails' forgery-protection token.
 - **A benchmark for the tracker.** `rake example:benchmark` stays blog-only: loadgen sends no headers, and every tracker route but sign-up wants a token.
 
 ## Runtime differences only verify can catch
@@ -67,6 +89,9 @@ Each of these is refused with the file and line rather than compiled wrong. They
 - A param holding an array or a hash raises when it's read as a value (`params[:ids]` given `[1, 2]`), where Rails hands the array or hash on: a Value holds only scalars, and nil would answer `present?`, `==` and `render` differently.
 - `Time + Float` keeps microseconds, so a fraction of a microsecond rounds where Ruby's Rational time wouldn't.
 
+- An exception nobody rescues in an HTML controller gets the JSON error page here; Rails would send `public/404.html` (or an empty body).
+- A template compiles as Rails compiled it in the environment introspected, so a build introspected in development carries `annotate_rendered_view_with_filenames` comments if that environment turns them on.
+- The Rust jobs worker runs every Active Job payload on the queues it's given; a class the build doesn't have fails into Sidekiq's retry set, where a Ruby worker may take it later.
 - An association doesn't keep the children built on it: `order.line_items.build(...)` then `order.line_items.size` counts the saved rows only, where Rails adds the unsaved one.
 - `find_each` queries one batch at a time, but the records it loads stay in the request's `Ctx` until the request ends, since a handle into them may live on.
 - Two locals naming one relation (`b = a`) are two copies here: loading one doesn't load the other, where in Ruby they are one object.

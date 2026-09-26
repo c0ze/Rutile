@@ -2,6 +2,30 @@
 
 Rutile and RustOnRails share version numbers; each minor version is one milestone of [docs/roadmap.md](docs/roadmap.md).
 
+## 0.10.0
+
+Sessions, jobs and views (`feature/sessions-jobs-views`): a Rails app's cookie session, its Sidekiq jobs and its ERB pages, compiled.
+
+- **Sessions and cookies:**
+  - `session[:key]`, `session[:key] =`, `session.delete` and `reset_session` compile on Rails' cookie store, with the cookie name introspected from the middleware.
+  - `cookies[:name]` reads and writes plain cookies.
+  - With the app's `SECRET_KEY_BASE`, Rails and the binary read each other's session cookies.
+  - The store keeps a cart in the session. One of its tests hands the cookie from Rails to the binary and back.
+- **Jobs:**
+  - An Active Job class on the Sidekiq adapter compiles to `src/jobs/<job>.rs`, typed by its `perform`'s rbs-inline signature.
+  - `perform_later` pushes the payload Sidekiq 8's adapter pushes, key for key; `perform_now` runs the job in place.
+  - The binary's `work [--once]` is a Sidekiq worker for the app's queues, with Sidekiq's retry and dead sets.
+  - The store restocks through `RestockJob`. Its tests pass jobs between Rails and the binary both ways.
+- **Views:**
+  - Introspection compiles each `app/views` template with Rails' own ERB handler, and the build translates the Ruby it makes, so Rails' trimming and escaping carry over.
+  - Full-stack controllers (`ActionController::Base`) render templates in layouts: implicitly, or with `render :name`, a template path, `template:` or `action:`, and `status:`.
+  - View helpers: `link_to`, `content_for`, `provide`, `content_for?`, `yield :name`, `raw`, and a `_path` helper for each named route. Controllers can call the `_path` helpers too.
+  - The store gains a storefront whose five tests assert Rails' exact bytes, and the binary passes them.
+- Also:
+  - `where.not` with a nilable value, or one read from a record.
+  - Manifests are read as UTF-8 whatever the locale.
+  - `rutile verify` gives the binary `REDIS_URL` and the tests `RUTILE_BINARY` and `RUTILE_DATABASE_URL`.
+
 ## 0.9.0
 
 Tooling (`feature/tooling`): from `rutile check` to a running container with `rutile` commands alone ([docs/deploy.md](docs/deploy.md)).
