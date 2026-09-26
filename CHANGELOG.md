@@ -2,6 +2,14 @@
 
 Rutile and RustOnRails share version numbers; each minor version is one milestone of [docs/roadmap.md](docs/roadmap.md).
 
+## 0.9.0
+
+Tooling (`feature/tooling`): from `rutile check` to a running container with `rutile` commands alone ([docs/deploy.md](docs/deploy.md)).
+
+- `rutile verify APP --crate DIR` runs the app's integration tests against the release binary on the app's test database. The app needs no change, and verify fails if no request reached the binary. The examples' test helpers lose their hand-written hook.
+- `rutile package --crate DIR --runtime PATH --out DIR [--image TAG]` gives a directory that builds offline (the crate, RustOnRails with its lock file, vendored crates, a Dockerfile), the release binary, and optionally the image.
+- The subset rules as a RuboCop plugin (`plugins: [rutile]`, cop `Rutile/Subset`), with `rutile check`'s messages on the exact code.
+
 ## 0.8.0
 
 The Value fallback (`feature/value-fallback`).

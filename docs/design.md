@@ -77,7 +77,7 @@ The app's own integration tests run against the binary. With `RUTILE_TARGET` set
 - The query cache is cleared after every forwarded request. The test process turns the cache on around each test, and without clearing it, `assert_difference` reads its stale count.
 - The target exposes `Rails.application.routes`, which is what gives the tests their `*_path` helpers.
 
-Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. The target forwards every header the test sets except the connection's own, so an API token in a header reaches the Rust server. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. For the tracker (`EXAMPLE=tracker`) all 24 do. This is what makes the output trustworthy, so it was built before codegen.
+Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. The target forwards every header the test sets except the connection's own, so an API token in a header reaches the Rust server. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. For the tracker (`EXAMPLE=tracker`) all 24 do. This is what makes the output trustworthy, so it was built before codegen. Since 0.9.0 it's `rutile verify APP --crate DIR`: a hook loaded through `RUBYOPT` installs the target once `rails/test_help` loads, so the app's test helper needs no change, and verify fails if no request reached the binary.
 
 ## Types
 

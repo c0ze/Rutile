@@ -46,8 +46,11 @@ The commands, in the order you'd run them:
 
 1. `rutile check APP` reports, in one pass, every construct `rutile build` can't compile: the design's source rules (`eval`, `method_missing`, `send` with a computed name, reopened core classes, `define_method`, class variables, mutable globals, each with the usual fix), every unit the build would refuse, gems that patch Rails at runtime, and app files Rutile doesn't compile (as notes). It exits 1 when there's a problem.
 2. `rutile introspect` boots the app and dumps what Rails built at load time: schema, routes, associations, validations, callbacks, enums, scopes, controller filters. Rails resolves its own metaprogramming; Rutile reads the result.
-3. `rutile build APP --out DIR --runtime RUSTONRAILS` writes a Cargo crate that depends on `rustonrails`, formats it and checks it with `cargo check`. `cargo build --release` gives you the binary.
-4. Verify (for now `rake example:verify`, with `EXAMPLE=tracker` or `EXAMPLE=store` for the other examples) runs the app's integration tests against the binary, forwarding each request from the test process to the Rust server.
+3. `rutile build APP --out DIR --runtime RUSTONRAILS` writes a Cargo crate that depends on `rustonrails`, formats it and checks it with `cargo check`. It lists every place it fell back to `Value`.
+4. `rutile verify APP --crate DIR` runs the app's integration tests against the release binary, forwarding each request from the test process to the Rust server. The app needs no change (`rake example:verify EXAMPLE=blog|tracker|store` does this for the examples).
+5. `rutile package --crate DIR --runtime RUSTONRAILS --out DIR [--image TAG]` makes the crate deployable: a directory that builds offline, the release binary, and optionally a container image.
+
+[docs/deploy.md](docs/deploy.md) walks the store through all five to a running container. The subset rules are also a RuboCop plugin (`plugins: [rutile]`), so editors flag them as they're typed.
 
 The full design is in [docs/design.md](docs/design.md), and what comes next in [docs/roadmap.md](docs/roadmap.md).
 
