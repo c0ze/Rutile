@@ -34,7 +34,7 @@ class FragmentsTest < Minitest::Test
                       from: TrackerHelper::APP, manifest: TrackerHelper.manifest, diagnostics: Rutile::Build::Diagnostics.new)
     rust = Rutile::Build::ControllerFile.new(app, "TasksController").to_rust
     refute app.diagnostics.problems.any? { _1.start_with?("app/controllers/tasks_controller.rb:") && _1.include?(":8:") }
-    assert_rust_includes rust, 'tasks = tasks.search(req.params.value("q").to_str()?);'
+    assert_rust_includes rust, 'tasks = tasks.search(req.params.value("q")?.to_str()?);'
   end
 
   def test_interpolation_formats_and_escapes_braces

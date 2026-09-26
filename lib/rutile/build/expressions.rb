@@ -111,15 +111,21 @@ module Rutile
         left, right = [left, right].map { unwrap(_1, name) }
         kinds = [left.type.kind, right.type.kind]
         if name == "+" && kinds == %i[str str]
+          # Symbol has no +, and String#+ won't take one.
+          unsupported!(node, "+ with a Symbol") if [left, right].any? { _1.extra[:symbol] }
           left, right = settle([left, right], :none)
           return Code["format!(\"{}{}\", #{left.rust}, #{right.rust})", T::STR, touch(left, right)]
         end
         unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}") unless (kinds - %i[int float]).empty?
-        left, right = [left, right].map { kinds.include?(:float) && _1.type == T::INT ? Code["(#{_1.rust} as f64)", T::FLOAT, _1.ctx] : _1 }
+        left, right = [left, right].map do
+          kinds.include?(:float) && _1.type == T::INT ? Code["(#{_1.rust} as f64)", T::FLOAT, _1.ctx, cast: "#{_1.rust} as f64"] : _1
+        end
         left, right = settle([left, right], :none)
         if (function = FLOORED[[name, left.type.kind]])
           @uses.rt(function)
-          return Code["#{function}(#{left.rust}, #{right.rust})?", left.type, touch(left, right)]
+          # An argument needs no parentheses; Rust warns about them.
+          bare = ->(code) { code.extra[:cast] && code.rust == "(#{code.extra[:cast]})" ? code.extra[:cast] : code.rust }
+          return Code["#{function}(#{bare.(left)}, #{bare.(right)})?", left.type, touch(left, right)]
         end
         rust = "#{operand(left, name, false)} #{name} #{operand(right, name, true)}"
         Code[rust, left.type, touch(left, right), arith: name]
@@ -166,7 +172,7 @@ module Rutile
         codes = settle(codes, :none).map do |code|
           case code.type
           when T::VALUE then Code["#{code.rust}.to_s()", T::STR, code.ctx]
-          when T.nilable(T::STR) then Code["#{code.rust}.unwrap_or_default()", T::STR, code.ctx]
+          when T.nilable(T::STR) then Code["#{code.rust}.as_deref().unwrap_or_default()", T::STR, code.ctx]
           when T.nilable(T::INT) then Code["#{code.rust}.map(|value| value.to_string()).unwrap_or_default()", T::STR, code.ctx]
           else code
           end
@@ -218,6 +224,8 @@ module Rutile
 
       def unify(a, b, node)
         return [a.type, owned(a, a.type), owned(b, b.type)] if a.type == b.type
+        # A Value holds nil itself; an Option of one would count nil as there.
+        return [T::VALUE, *[a, b].map { owned(to_value(_1), T::VALUE) }] if [a.type, b.type].sort_by(&:kind) == [T::NIL, T::VALUE].sort_by(&:kind)
         return [T.nilable(b.type), "None", "Some(#{owned(b, b.type)})"] if a.type == T::NIL && !b.type.nilable?
         return [T.nilable(a.type), "Some(#{owned(a, a.type)})", "None"] if b.type == T::NIL && !a.type.nilable?
         return [a.type, owned(a), "None"] if b.type == T::NIL

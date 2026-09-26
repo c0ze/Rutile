@@ -27,7 +27,7 @@ class QueriesTest < Minitest::Test
     assert_rust_includes rust, ".offset((self.page(req)? - 1) * PER_PAGE);"
     assert_rust_includes rust, <<~RUST
       fn page(&mut self, req: &mut Request) -> Result<i64> {
-          Ok(i64::max(req.params.fetch("page", 1).to_i()?, 1))
+          Ok(i64::max(req.params.fetch("page", 1)?.to_i()?, 1))
       }
     RUST
   end
@@ -39,7 +39,7 @@ class QueriesTest < Minitest::Test
     # The relation has a `?` in it, so it's read before params[:id], as Ruby does.
     assert_rust_includes rust, "let tasks = Task::all().joins(&Task::PROJECT).joins(&Project::MEMBERSHIPS)" \
                                '.where_on::<Membership>("user_id", req.ctx[self.current_user.ok_or(Error::Nil { what: "id" })?].id);'
-    assert_rust_includes rust, 'self.task = Some(tasks.find(&mut req.ctx, req.params.value("id"))?);'
+    assert_rust_includes rust, 'self.task = Some(tasks.find(&mut req.ctx, req.params.value("id")?)?);'
   end
 
   # has_many :through joins its join table, so a where can name it.
