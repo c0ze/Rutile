@@ -90,15 +90,31 @@ module Rutile
         @helpers[name][:type]
       end
 
+      # A helper's rbs-inline signature, once `helper` has translated it.
+      def signature(name) = @helpers[name]&.fetch(:signature, nil)
+
       private
 
       def translate_helper(name, node, path, tail)
-        translator = translator(path)
         parameter = Rescues.parameter(@app, path, node) if tail == :response
-        raise Unsupported.at(path, node, "a controller method with parameters") if node.parameters && !parameter
-
+        signature = Signatures.of(@app, path, node) unless parameter
+        if node.parameters && !parameter
+          raise Unsupported.at(path, node, "a controller method with parameters and no rbs-inline signature") unless signature
+          # Rails calls a filter with no arguments.
+          raise Unsupported.at(path, node, "a before_action method with parameters") if %i[unit filter].include?(tail)
+        end
+        declared = signature&.returns
+        tail = :unit if declared == T::UNIT && tail == :value
+        translator = translator(path, returns: tail == :value ? declared : nil)
         exception = parameter && Rescues.declare(translator, @uses, node, parameter)
+        params = (signature&.params || []).map do |param|
+          rust = (Translator::KEYWORDS + Translator::UNRAW + %w[req ctx self]).include?(param.name) ? "#{param.name}_" : param.name
+          translator.declare(param.name, rust, param.type)
+          @uses.type(param.type)
+          [rust, param.type]
+        end
         lines, type = translator.body(node.body, tail)
+        type = declared if declared && tail == :value
         returned = { unit: "()", response: "Response", filter: "Option<Response>" }.fetch(tail) do
           raise Unsupported.at(path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 
@@ -106,15 +122,16 @@ module Rutile
           type.rust
         end
         lines << "Ok(())" if tail == :unit
+        arguments = params.map { |rust, param_type| "#{Names.mentions?(lines, rust) ? rust : "_#{rust}"}: #{param_type.rust}" }
         rust = "// #{path}:#{node.location.start_line}\n" \
-               "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception].join(", ")}) " \
+               "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception, *arguments].join(", ")}) " \
                "-> Result<#{returned}> {\n#{lines.join("\n")}\n}"
-        { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust: }
+        { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust:, signature: }
       end
 
       def defs = @app.source.defs(@path)
 
-      def translator(path = @path) = Translator.new(@app, path, @uses, env: :controller, controller: self)
+      def translator(path = @path, returns: nil) = Translator.new(@app, path, @uses, env: :controller, controller: self, returns:)
 
       # Private methods come from this file, then ApplicationController:
       # Rust has no inheritance, so an inherited method is translated into

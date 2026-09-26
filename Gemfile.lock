@@ -2,13 +2,21 @@ PATH
   remote: .
   specs:
     rutile (0.5.0)
+      rbs (>= 3.8)
 
 GEM
   remote: https://rubygems.org/
   specs:
+    logger (1.7.0)
     minitest (5.27.0)
+    prism (1.9.0)
     rack (3.2.7)
     rake (13.4.2)
+    rbs (4.2.0)
+      logger
+      prism (>= 1.6.0)
+      tsort
+    tsort (0.2.0)
 
 PLATFORMS
   ruby

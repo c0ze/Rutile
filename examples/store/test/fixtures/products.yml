@@ -1,0 +1,15 @@
+kettle:
+  name: Kettle
+  price_cents: 2500
+  stock: 5
+
+mug:
+  name: Mug
+  price_cents: 800
+  stock: 0
+
+lamp:
+  name: Lamp
+  price_cents: 4200
+  stock: 2
+  active: false

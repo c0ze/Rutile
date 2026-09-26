@@ -24,8 +24,9 @@ module Rutile
           return ivar_named(name, node) if args.empty? && @controller.reader?(name)
 
           type = @controller.helper(name, node) or return nil
-          unsupported!(node, "calling #{name} with arguments") unless args.empty?
-          Code["self.#{Names.method(name)}(req)?", type, :write, hint: name.end_with?("_params") ? "attributes" : name]
+          values = call_arguments(@controller.signature(name), args, node, name, bind: :all)
+          Code["self.#{Names.method(name)}(#{["req", *values].join(", ")})?", type, :write,
+               hint: name.end_with?("_params") ? "attributes" : name.delete_suffix("?").delete_suffix("!")]
         end
       end
 

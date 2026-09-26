@@ -15,6 +15,7 @@ module Rutile
 
       include ModelCalls
       include RecordMethods
+      include Arguments
       include RecordCalls
       include Borrowing
       include WebCalls
@@ -27,7 +28,9 @@ module Rutile
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
       # lambda). `result` is false for functions that don't return Result.
-      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false)
+      # `returns` is the type a signature declares for the value the body ends on.
+      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false, returns: nil)
+        @returns = returns
         @app = app
         @path = path
         @uses = uses
@@ -111,7 +114,7 @@ module Rutile
         return filter_tail(node) if tail == :filter
         return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
 
-        code = expr(node)
+        code = @returns && tail == :value ? returned(value(node), node) : expr(node)
         if tail == :response
           raise Unsupported.at(@path, node, "an action that doesn't end in render or head") unless code.type == T::RESPONSE
 
@@ -273,25 +276,6 @@ module Rutile
         handler = "on_#{receiver.type.kind}"
         found = respond_to?(handler, true) ? send(handler, receiver, node, name, args) : nil
         found || unsupported!(node, "#{name} on #{describe(receiver.type)}")
-      end
-
-      # `x&.m`: nil stays nil, otherwise `m` runs on the value.
-      def safe_call(receiver, node, name, args)
-        return send_to(receiver, node, name, args) unless receiver.type.nilable?
-
-        receiver = bind(receiver) if receiver.reads? || impure?(receiver)
-        var = @locals.key?(receiver.hint) || receiver.hint.nil? ? fresh("value") : receiver.hint
-        saved = @lines
-        @lines = []
-        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, name, args)
-        unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
-        unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
-        @lines = saved
-        # Onto something that may itself be nil, it stays one Option deep.
-        flat = inner.type.nilable?
-        rust = "#{receiver.rust}.#{flat ? "and_then" : "map"}(|#{var}| #{inner.rust})"
-        safe = inner.type == T::BOOL ? { safe: [receiver.rust, var, inner.rust] } : {}
-        Code[rust, flat ? inner.type : T.nilable(inner.type), :read, nav: true, **safe]
       end
     end
   end

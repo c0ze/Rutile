@@ -82,6 +82,9 @@ module Rutile
       def std(path) = @std << path
       def rt(*names) = @rt.merge(names)
       def model(*names) = @models.merge(names)
+
+      # A model file defines its own model, so never imports it.
+      def drop_model(name) = @models.delete(name)
       def line(text) = (@lines << text unless @lines.include?(text))
 
       # A `const` item; false when the name already holds a different one.

@@ -13,4 +13,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "exe"
   spec.executables = ["rutile"]
   spec.require_paths = ["lib"]
+
+  # rbs-inline signatures are read with the RBS parser.
+  spec.add_dependency "rbs", ">= 3.8"
 end

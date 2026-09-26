@@ -9,16 +9,18 @@ module Rutile
       # `@project.archive!`, `task.overdue?`: `Model::method(ctx, record)`.
       # Ruby lets only the record itself call a private one.
       def model_method(receiver, node, model, name, args)
-        unsupported!(node, "calling #{name} with arguments") unless args.empty?
         own = @env == :model && model == @model && receiver.rust == @self_var
         if @app.model_methods.private?(model, name) && !own
           unsupported!(node, "the private method #{name} from outside #{model}")
         end
         need_ctx!(node)
         type = @app.model_methods.type(model, name, [@path, node])
+        signature = @app.model_methods.signature(model, name)
+        receiver, values = after(receiver) { call_arguments(signature, args, node, name, bind: :ctx) }
         receiver = settle([receiver], :write).first
         use_model(model)
-        Code["#{model}::#{Names.method(name)}(#{ctx_mut}, #{receiver.rust})?", type, :write, hint: name.delete_suffix("?").delete_suffix("!")]
+        call = [ctx_mut, receiver.rust, *values].join(", ")
+        Code["#{model}::#{Names.method(name)}(#{call})?", type, :write, hint: name.delete_suffix("?").delete_suffix("!")]
       end
 
       # `task.done!`, the enum's bang method, is `update!(status: :done)`.

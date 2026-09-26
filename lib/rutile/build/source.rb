@@ -7,14 +7,18 @@ module Rutile
         @trees = {}
       end
 
-      def tree(path)
-        @trees[path] ||= begin
-          result = Prism.parse_file(File.join(@root, path))
-          # Unsupported, so `rutile check` records it and carries on.
-          raise Unsupported, "#{path}: #{result.errors.first.message}" if result.failure?
+      def tree(path) = parsed(path).value
 
-          result.value
-        end
+      # The file's comments, which carry rbs-inline signatures.
+      def comments(path) = parsed(path).comments
+
+      # The comment lines directly above `line`, nearest last: what
+      # annotates the def (or `private def`) that starts there.
+      def comments_above(path, line)
+        by_line = comments(path).to_h { [_1.location.start_line, _1.slice] }
+        above = []
+        above.unshift(by_line[line - above.size - 1]) while by_line.key?(line - above.size - 1)
+        above
       end
 
       def exist?(path) = File.file?(File.join(@root, path))
@@ -35,6 +39,16 @@ module Rutile
       end
 
       private
+
+      def parsed(path)
+        @trees[path] ||= begin
+          result = Prism.parse_file(File.join(@root, path))
+          # Unsupported, so `rutile check` records it and carries on.
+          raise Unsupported, "#{path}: #{result.errors.first.message}" if result.failure?
+
+          result
+        end
+      end
 
       def all(node, found = [], &match)
         found << node if match.call(node)

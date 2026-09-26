@@ -49,15 +49,32 @@ module Rutile
         T::UNIT
       end
 
-      # `return` in a callback or a filter; a value to return isn't compiled.
+      # `return` in a callback or a filter, and with or without a value in
+      # a method whose signature declares what it returns.
       def early_return(node)
         unsupported!(node, "return inside a block") if @block
+        if @mode == :value && @returns
+          code = node.arguments ? value(only(node.arguments.arguments, node)) : Code["None", T::NIL]
+          code = returned(code, node)
+          return @lines << "return Ok(#{owned(code, code.type)});"
+        end
         unsupported!(node, "return with a value") if node.arguments
         case @mode
         when :unit then @lines << (@result ? "return Ok(());" : "return;")
         when :filter then @lines << "return Ok(None);"
         else unsupported!(node, "return here")
         end
+      end
+
+      # A value the method returns, as the type its signature declares: a
+      # value where it may be nil becomes `Some`, and nil `None`.
+      def returned(code, node)
+        want = @returns
+        return code if code.type == want
+        return Code["Some(#{owned(code, want.inner)})", want, code.ctx] if want.nilable? && code.type == want.inner
+        return Code["None", want] if want.nilable? && code.type == T::NIL
+
+        unsupported!(node, "returning #{describe(code.type)} where the signature says #{describe(want)}")
       end
     end
   end

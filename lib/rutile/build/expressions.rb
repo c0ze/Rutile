@@ -10,6 +10,25 @@ module Rutile
 
       private
 
+      # `x&.m`: nil stays nil, otherwise `m` runs on the value.
+      def safe_call(receiver, node, name, args)
+        return send_to(receiver, node, name, args) unless receiver.type.nilable?
+
+        receiver = bind(receiver) if receiver.reads? || impure?(receiver)
+        var = @locals.key?(receiver.hint) || receiver.hint.nil? ? fresh("value") : receiver.hint
+        saved = @lines
+        @lines = []
+        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, name, args)
+        unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
+        unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
+        @lines = saved
+        # Onto something that may itself be nil, it stays one Option deep.
+        flat = inner.type.nilable?
+        rust = "#{receiver.rust}.#{flat ? "and_then" : "map"}(|#{var}| #{inner.rust})"
+        safe = inner.type == T::BOOL ? { safe: [receiver.rust, var, inner.rust] } : {}
+        Code[rust, flat ? inner.type : T.nilable(inner.type), :read, nav: true, **safe]
+      end
+
       # `a && b`, `a || b`: Rust's operators short-circuit as Ruby's do, and
       # statements the right side needs go in a block so they run only when
       # it does. Ruby returns an operand; unless both are booleans, only the

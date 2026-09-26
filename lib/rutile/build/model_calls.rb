@@ -21,10 +21,30 @@ module Rutile
           receiver = settle([receiver], :read).first
           return Code["#{ctx_recv}[#{receiver.rust}].#{Names.method(name)}()", T::BOOL, :read]
         end
+        query = @app.column_type(model, name.delete_suffix("?")) if name.end_with?("?") && args.empty?
+        return query_attribute(receiver, name.delete_suffix("?"), query) if query
+
         assoc = @app.association(model, name)
         return association(receiver, model, assoc, node) if assoc && args.empty?
 
         record_method(receiver, node, model, name, args)
+      end
+
+      # `active?`: Rails' query_attribute. nil and false are false; a String
+      # must not be blank, a number not zero.
+      def query_attribute(receiver, attribute, type)
+        receiver = settle([receiver], :read).first
+        field = "#{ctx_recv}[#{receiver.rust}].#{attribute}"
+        rust = case type.kind
+               when :bool then "#{field} == Some(true)"
+               when :str
+                 @uses.rt("Blank")
+                 "#{field}.as_deref().is_some_and(|value| !value.is_blank())"
+               when :int then "#{field}.is_some_and(|value| value != 0)"
+               when :float then "#{field}.is_some_and(|value| value != 0.0)"
+               else "#{field}.is_some()"
+               end
+        Code[rust, T::BOOL, :read]
       end
 
       def write_attribute(receiver, attribute, type, arg, node) = write_value(receiver, attribute, type, expr(arg), node)

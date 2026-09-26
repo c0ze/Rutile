@@ -21,6 +21,7 @@ module Rutile
       def ivar(name, _type, node) = raise(Unsupported.at(PATH, node, "@#{name} in ApplicationController"))
       def ivar_type(_name) = nil
       def helper(_name, _node) = nil
+      def signature(_name) = nil
       def reader?(_name) = false
 
       private
