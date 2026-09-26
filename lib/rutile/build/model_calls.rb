@@ -141,6 +141,7 @@ module Rutile
         when "find" then find_in(receiver, model, args, node)
         when "include?" then include_in(receiver, model, args, node)
         when "sanitize_sql_like" then sanitize_like(args, node)
+        when *Calculations::METHODS then calculation(receiver, model, name, args, node)
         else scope_call(receiver, model, name, node, args)
         end
       end

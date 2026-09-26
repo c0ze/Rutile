@@ -43,6 +43,14 @@ module Rutile
         Code["#{group(truthy(left, node.left), left, logic: true)} #{operator} #{right_rust}", type, touch(left, right), logic: true]
       end
 
+      # A Float literal as Rust spells it; Ruby's `to_s` of one always has
+      # a `.` or an exponent Rust reads the same.
+      def float_literal(node)
+        unsupported!(node, "a Float literal too large for a Float") unless node.value.finite?
+
+        Code[node.value.to_s, T::FLOAT]
+      end
+
       def negate(receiver, node) = Code["!(#{truthy(receiver, node)})", T::BOOL, receiver.ctx]
 
       # `==` and `!=` compare like types (an Option with its value); the

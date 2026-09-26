@@ -1,42 +1,12 @@
 module Rutile
   module Build
-    # `map` with a block over a relation, and what renders its result: the
-    # records load once, the block's body runs in a `for` loop over them,
-    # and each value it ends on is pushed onto a `Vec`. A `for` loop rather
-    # than a closure, so the body can borrow the Ctx and use `?` as the
-    # method around it does. Also `merge` on a hash `as_json` made.
+    # A block's parameter and body (the loops are Iteration's), rendering
+    # the arrays blocks give, and `merge` on a hash `as_json` made.
     module Blocks
       # What a mapped list may hold.
-      ELEMENTS = %i[json str int bool record].freeze
+      ELEMENTS = %i[json str int float bool record].freeze
 
       private
-
-      def map_block(node)
-        block = node.block
-        name = block_parameter(block, node)
-        need_ctx!(node)
-        receiver = expr(node.receiver)
-        unsupported!(node, "map over #{describe(receiver.type)}") unless receiver.type.kind == :relation
-
-        model = receiver.type.model
-        records = bind(Code["#{receiver.rust}.load(#{ctx_mut})?", T.records(model), :write, hint: "records"])
-        rust = [*Translator::KEYWORDS, "ctx", "req", "self", @self_var].include?(name) ? fresh("record") : name
-        lines, value = in_block(name, Code[rust, T.record(model), local: true]) do
-          statements = block.body&.body || []
-          unsupported!(node, "an empty map block") if statements.empty?
-          statements[0...-1].each { statement(_1) }
-          value(statements.last)
-        end
-        element = value.type.nilable? ? value.type.inner : value.type
-        unsupported!(node, "a map block giving #{describe(value.type)}") unless ELEMENTS.include?(element.kind)
-
-        list = fresh("mapped")
-        pushed = owned(value, value.type)
-        variable = Names.mentions?([*lines, pushed], rust) ? rust : "_#{rust}"
-        @lines << "let mut #{list} = Vec::with_capacity(#{records.rust}.len());"
-        @lines.push("for #{variable} in #{records.rust} {", *lines, "#{list}.push(#{pushed});", "}")
-        Code[list, T.list(value.type), :none, hint: list]
-      end
 
       # The one plain parameter a block may take: `|task|`.
       def block_parameter(block, node)
@@ -56,8 +26,10 @@ module Rutile
         saved = [@lines, @locals.dup, @params.dup, @block]
         @lines = []
         @block = true
-        @locals[name] = code
-        @params << name
+        if name
+          @locals[name] = code
+          @params << name
+        end
         result = yield
         [@lines, result]
       ensure
@@ -76,6 +48,9 @@ module Rutile
         when :record
           unsupported!(node, "render json: an array of records that may be nil") if inner.nilable?
           render_list(code, element.model, node)
+        when :float
+          # serde_json writes 1e20 where Ruby's JSON writes 1.0e+20.
+          unsupported!(node, "render json: an array of Floats")
         else
           @uses.rt("Json")
           Code["Json::from(#{owned(code)})", T::JSON, code.ctx]

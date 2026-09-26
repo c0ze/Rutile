@@ -11,6 +11,28 @@ class Order < ApplicationRecord
     line_items.create!(product: product, quantity: quantity, unit_price_cents: product.price_cents)
   end
 
+  #: () -> Integer
+  def units
+    line_items.sum(:quantity)
+  end
+
+  #: () -> Integer
+  def subtotal_cents
+    line_items.sum { |item| item.quantity * item.unit_price_cents }
+  end
+
+  # Puts a placed order's units back on the shelf and reopens it.
+  #: () -> void
+  def reopen!
+    transaction do
+      line_items.each do |item|
+        product = item.product
+        product.update!(stock: product.stock + item.quantity)
+      end
+      update!(status: :cart, total_cents: nil, placed_at: nil)
+    end
+  end
+
   # @rbs other: Order?
   # @rbs return: bool
   def same_customer?(other)

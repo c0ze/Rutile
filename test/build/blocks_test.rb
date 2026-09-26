@@ -81,15 +81,16 @@ class BlocksTest < Minitest::Test
   end
 
   def test_blocks_it_cant_run
-    refused("1: a map block without one plain parameter", "render json: Task.all.map { _1.title }")
+    refused("1: a map block using _2", "render json: Task.all.map { _1.title + _2 }")
     refused("1: a map block without one plain parameter", "render json: Task.all.map { |a, b| a }")
-    refused("1: a map block without one plain parameter", "render json: Task.all.map(&:title)")
-    refused("1: map over str", 'render json: "abc".map { |c| c }')
+    refused("1: passing a proc to map", "render json: Task.all.map(&method(:title))")
+    refused("1: map on str", 'render json: "abc".map { |c| c }')
     refused("1: return inside a block", "render json: Task.all.map { |t| return if t.title\n t }")
     refused("1: an empty map block", "render json: Task.all.map { |t| }")
     refused("1: a map block giving nil", "render json: Task.all.map { |t| nil }")
     refused("1: a map block giving a relation of Task", "render json: Task.all.map { |t| Task.all }")
-    refused("1: a block passed to each", "Task.all.each { |t| t.title }\nhead :ok")
+    refused("1: using the value of each, which is its receiver,", "x = Task.all.each { |t| t.title }\nhead :ok")
+    refused("1: a block passed to each_with_index", "Task.all.each_with_index { |t| t.title }\nhead :ok")
     refused("1: render json: an array of hashes that may be nil",
             "render json: Task.all.map { |t| t.title ? t.as_json : nil }")
   end

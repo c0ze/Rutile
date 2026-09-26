@@ -16,6 +16,21 @@ module Rutile
         type
       end
 
+      # `total += price`: `+`, `-` or `*` on an Integer or Float local, as
+      # `total = total + price` would be.
+      def operator_assign(node)
+        name = node.name.to_s
+        operator = node.binary_operator.to_s
+        unsupported!(node, "#{operator}=") unless Expressions::ARITHMETIC.include?(operator)
+        unsupported!(node, "assigning to the parameter #{name}") if @params.include?(name)
+        local = @locals[name] or unsupported!(node, "#{name} #{operator}= before it's assigned")
+        right = settle([unwrap(value(node.value), operator)], :none).first
+        unless local.type == right.type && %i[int float].include?(local.type.kind)
+          unsupported!(node, "#{operator}= between #{describe(local.type)} and #{describe(right.type)}")
+        end
+        @lines << "#{local.rust} = #{local.rust} #{operator} #{operand(right, operator, true)};"
+      end
+
       def conditional(node)
         other = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
         raise Unsupported.at(@path, node, "elsif") if other.is_a?(Prism::IfNode)

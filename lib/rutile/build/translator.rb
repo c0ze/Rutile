@@ -21,6 +21,10 @@ module Rutile
       include WebCalls
       include ControlFlow
       include Blocks
+      include Iteration
+      include Lists
+      include Calculations
+      include Transactions
       include Expressions
       include Constants
       include Queries
@@ -81,6 +85,7 @@ module Rutile
         statements.each_with_index do |node, i|
           last = i == statements.size - 1
           unsupported!(statements[i + 1], "code after return") if node.is_a?(Prism::ReturnNode) && !last
+          unsupported!(statements[i + 1], "code after raise") if rollback?(node) && !last
           # A method's trailing `return` is where it ends anyway.
           next if node.is_a?(Prism::ReturnNode) && last && @depth == 1 && tail == :unit && !@block && !node.arguments
 
@@ -98,7 +103,7 @@ module Rutile
       # and how often each local is assigned, for `let mut`.
       def reserve(node)
         case node
-        when Prism::LocalVariableWriteNode
+        when Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode
           name = node.name.to_s
           @writes[name] += 1
           # One that would shadow the record, the Ctx or a keyword gets another name.
@@ -129,10 +134,13 @@ module Rutile
         case node
         when Prism::IfNode, Prism::UnlessNode then conditional(node)
         when Prism::LocalVariableWriteNode then assign_local(node)
+        when Prism::LocalVariableOperatorWriteNode then operator_assign(node)
         when Prism::InstanceVariableWriteNode then assign_ivar(node)
         when Prism::CallOrWriteNode then or_assign(node)
         when Prism::ReturnNode then early_return(node)
         else
+          return if block_statement(node)
+
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
           # A plain name (the record `create!` returns) as a statement does nothing.
@@ -197,6 +205,7 @@ module Rutile
         when Prism::InterpolatedStringNode then interpolation(node)
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::IntegerNode then Code[node.value.to_s, T::INT]
+        when Prism::FloatNode then float_literal(node)
         when Prism::NilNode then Code["None", T::NIL]
         when Prism::AndNode, Prism::OrNode then logic(node)
         when Prism::IfNode then ternary(node)
@@ -204,6 +213,7 @@ module Rutile
         when Prism::FalseNode then Code["false", T::BOOL]
         when Prism::ParenthesesNode then expr(only(node.body&.body || [], node))
         when Prism::LocalVariableReadNode then @locals[node.name.to_s] || unsupported!(node, "#{node.name} before it's assigned")
+        when Prism::ItLocalVariableReadNode then @locals["it"] || unsupported!(node, "it outside a block")
         when Prism::InstanceVariableReadNode then ivar(node)
         when Prism::SelfNode then self_code(node)
         when Prism::ConstantReadNode then constant(node)
@@ -235,11 +245,8 @@ module Rutile
       def call(node)
         args = node.arguments&.arguments || []
         name = node.name.to_s
-        if node.block
-          return map_block(node) if name == "map" && node.receiver && args.empty? && !node.safe_navigation?
-
-          unsupported!(node, "a block passed to #{node.name}")
-        end
+        return block_call(node, name, args) if node.block
+        unsupported!(node, "raise where a value belongs") if name == "raise" && node.receiver.nil?
         # design.md: `send(:title)` is a direct call to `title`.
         if SENDS.include?(name) && (args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode))
           name = args.first.unescaped
