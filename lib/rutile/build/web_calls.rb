@@ -234,7 +234,8 @@ module Rutile
 
         key = only(args, node)
         unsupported!(node, "a query key that isn't a literal") unless key.is_a?(Prism::StringNode) || key.is_a?(Prism::SymbolNode)
-        Code["#{receiver.rust}.get(#{Names.str(key.unescaped)})", T::JSON_OPT]
+        # Owned, so a local holding it borrows nothing from the request.
+        Code["#{receiver.rust}.get(#{Names.str(key.unescaped)}).cloned()", T::JSON_OPT]
       end
 
       # A rescue handler's RecordInvalid. It carries the invalid record's

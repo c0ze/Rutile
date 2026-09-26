@@ -28,6 +28,12 @@ class EverydayRubyTest < ActionDispatch::IntegrationTest
                  response.parsed_body)
   end
 
+  test "a relation that loaded answers from its records" do
+    post restock_low_products_path
+    assert_equal({ "restocked" => 1, "any" => true, "names" => %w[Mug], "first" => "Mug", "still_low" => 0 }, response.parsed_body)
+    assert_equal 10, products(:mug).reload.stock
+  end
+
   test "deactivate_sold_out walks every batch" do
     Product.create!(name: "Cup", price_cents: 300, stock: 0)
     Product.create!(name: "Plate", price_cents: 900, stock: 1)

@@ -59,10 +59,39 @@ module Rutile
       # `self.name` is a field, not the variable; `..name` is a range.
       def mentions?(lines, name) = code_only(Array(lines).join("\n")).match?(/(?<![\w#])(?<![^.]\.)#{Regexp.escape(name)}\b/)
 
+      # `lines` with `let mut` for a local of `locals` (Ruby's, by their
+      # Rust names) that nothing assigns again in its scope: a local first
+      # assigned in two blocks is `mut` for Ruby's count, not in either one.
+      def needless_mut(lines, locals)
+        text = lines.join("\n").split("\n")
+        text.each_with_index.map do |line, i|
+          name = line[/\A\s*let mut (\w+) = /, 1]
+          next line unless name && locals.include?(name) && !assigned_after?(text, i, name)
+
+          line.sub("let mut ", "let ")
+        end
+      end
+
+      def assigned_after?(text, index, name)
+        depth = 0
+        text[(index + 1)..].any? do |line|
+          code = code_only(line)
+          assigned = code.match?(/(?<![\w.])#{Regexp.escape(name)} = /)
+          depth += code.count("{") - code.count("}")
+          break false if depth.negative? && !assigned
+
+          assigned
+        end
+      end
+
+      # `Ok(())` to end a body returning `Result<()>`, unless it ends by
+      # returning already (a raise), where Rust would warn it's unreachable.
+      def ended(lines) = lines.last.to_s.start_with?("return ") ? [] : ["Ok(())"]
+
       # Functions generated code calls unqualified, which a Rust variable
       # of the same name would shadow.
       FUNCTIONS = %w[action error_page error_response errors_json format_date format_time health local_today merge now
-                     parse_query reason sanitize_sql_like today value_json].freeze
+                     parse_query reason sanitize_sql_like sum_floats sum_integers today value_json].freeze
 
       # A parameter's Rust name: its own, unless Rust, the runtime or the
       # method's other names (`taken`) already mean something by it. `_`

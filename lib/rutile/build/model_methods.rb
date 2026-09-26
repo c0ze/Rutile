@@ -111,7 +111,7 @@ module Rutile
         end
         tail = declared == T::UNIT ? :unit : :value
         lines, type = translator.body(node.body, tail)
-        lines << "Ok(())" if tail == :unit
+        lines.concat(Names.ended(lines)) if tail == :unit
         type = declared || type
         raise Unsupported.at(path, node, "a model method returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 

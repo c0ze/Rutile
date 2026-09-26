@@ -4,6 +4,7 @@ Rails.application.routes.draw do
       get :stats
       get :low_stock
       post :deactivate_sold_out
+      post :restock_low
     end
     member do
       post :restock

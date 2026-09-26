@@ -68,7 +68,8 @@ module Rutile
         unsupported!(node, "rescue or ensure around a whole body") if node && !node.is_a?(Prism::StatementsNode)
         @mode = tail
         reserve(node) if node
-        block(node ? node.body : [], tail)
+        lines, type = block(node ? node.body : [], tail)
+        [Names.needless_mut(lines, @writes.keys.map { @renames.fetch(_1, _1) }), type]
       end
 
       private

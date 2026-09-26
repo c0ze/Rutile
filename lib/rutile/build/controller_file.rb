@@ -121,7 +121,7 @@ module Rutile
           @uses.type(type)
           type.rust
         end
-        lines << "Ok(())" if tail == :unit
+        lines.concat(Names.ended(lines)) if tail == :unit
         arguments = params.map { |rust, param_type| "#{Names.mentions?(lines, rust) ? rust : "_#{rust}"}: #{param_type.rust}" }
         rust = "// #{path}:#{node.location.start_line}\n" \
                "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception, *arguments].join(", ")}) " \

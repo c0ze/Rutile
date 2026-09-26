@@ -21,11 +21,15 @@ module Rutile
         unsupported!(node, "#{name} with arguments") unless args.empty?
         receiver = settle([receiver], :write).first
         case name
-        when "count", "size" then Code["#{receiver.rust}.count(#{ctx_mut})?", T::INT, :write, hint: "count"]
+        # `count` and `exists?` always ask the database; `size`, `any?`,
+        # `empty?`, `none?` and `first` use the records a relation in a local
+        # has loaded, as Rails' do.
+        when "count" then Code["#{receiver.rust}.count(#{ctx_mut})?", T::INT, :write, hint: "count"]
+        when "size" then Code["#{receiver.rust}.size(#{ctx_mut})?", T::INT, :write, hint: "size"]
         when "first" then Code["#{receiver.rust}.first(#{ctx_mut})?", T.nilable(T.record(model)), :write, hint: Names.snake(model)]
+        when "exists?" then Code["#{receiver.rust}.exists(#{ctx_mut})?", T::BOOL, :write]
         else
-          # `any?` and `empty?` on a relation that isn't loaded are `exists?`.
-          rust = "#{receiver.rust}.exists(#{ctx_mut})?"
+          rust = "#{receiver.rust}.is_any(#{ctx_mut})?"
           Code[%w[empty? none?].include?(name) ? "!#{rust}" : rust, T::BOOL, :write]
         end
       end
@@ -35,6 +39,8 @@ module Rutile
         unless AGGREGATES[name].include?(type.kind) && !(name == "sum" && @app.enum(model, column))
           unsupported!(node, "#{name} of #{column}, a #{@app.enum(model, column) ? "enum" : describe(type)} column,")
         end
+        # An enum's minimum is its integer, as Rails casts by the enum's subtype.
+        type = T::INT if @app.enum(model, column)
         receiver = settle([receiver], :write).first
         use_type(type)
         rust = "#{receiver.rust}.#{name}::<#{type.rust}>(#{ctx_mut}, #{Names.str(column)})?"

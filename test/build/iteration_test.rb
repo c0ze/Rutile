@@ -129,6 +129,17 @@ class IterationTest < Minitest::Test
     refused("2: /=", "x = 1\nx /= 2\nhead :ok")
   end
 
+  # A local first assigned in two blocks is `mut` in neither.
+  def test_a_local_in_two_blocks
+    rust = action(<<~RUBY)
+      Product.all.each { |p| n = p.stock }
+      Product.all.each { |p| n = p.price_cents }
+      head :ok
+    RUBY
+    refute_includes rust, "let mut n"
+    assert_includes rust, "let n = req.ctx[p].stock;"
+  end
+
   # A block needn't name its element.
   def test_a_block_without_a_parameter
     assert_rust_includes action("render json: Product.all.map { 1 }"), "for _product in records { mapped.push(1); }"
@@ -148,5 +159,9 @@ class IterationTest < Minitest::Test
             "Product.find_each(start: 2) { |p| p }\nhead :ok")
     refused("1: find_each on an array of int", "Product.pluck(:stock).find_each { it }\nhead :ok")
     refused("1: render json: an array of Floats", "render json: Product.pluck(:stock).map { 1.5 }")
+    refused("1: each without a receiver", "each { |p| p }\nhead :ok")
+    refused("1: find_each with options other than batch_size: a positive Integer",
+            "Product.find_each(batch_size: 100_000_000_000_000_000_000) { |p| p }\nhead :ok")
+    refused("1: a map block giving a Symbol, which an array would hold as a String,", "render json: Product.all.map { :x }")
   end
 end

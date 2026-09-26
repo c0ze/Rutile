@@ -33,6 +33,7 @@ module Rutile
         end
         return false unless node.block && !node.safe_navigation? && %w[each find_each transaction].include?(name)
 
+        unsupported!(node, "#{name} without a receiver") if name != "transaction" && node.receiver.nil?
         case name
         when "each" then each_statement(node)
         when "find_each" then find_each(node)
@@ -69,7 +70,7 @@ module Rutile
         return 1000 unless node.arguments
 
         (key, value), = pairs(node.arguments.arguments, node)
-        unless key == "batch_size" && value.is_a?(Prism::IntegerNode) && value.value.positive? && node.arguments.arguments.size == 1
+        unless key == "batch_size" && value.is_a?(Prism::IntegerNode) && value.value.between?(1, 2**63 - 1) && node.arguments.arguments.size == 1
           unsupported!(node, "find_each with options other than batch_size: a positive Integer")
         end
         value.value
@@ -81,6 +82,7 @@ module Rutile
         lines, value = element_body(node, var, element, :value)
         kind = (value.type.nilable? ? value.type.inner : value.type).kind
         unsupported!(node, "a #{node.name} block giving #{describe(value.type)}") unless Blocks::ELEMENTS.include?(kind)
+        unsupported!(node, "a #{node.name} block giving a Symbol, which an array would hold as a String,") if value.extra[:symbol]
 
         list = fresh("mapped")
         pushed = owned(value, value.type)
