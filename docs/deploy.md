@@ -7,7 +7,7 @@ Since 0.9.0 an app goes from Ruby to a container image with `rutile` commands al
 ```
 $ rutile check examples/store --env test
 note: app/controllers/products_controller.rb:84: * falls back to Value
-note: app/models/product.rb:24: the value, str or int or nil, falls back to Value
+note: app/models/product.rb:24: the value, str, int or nil, falls back to Value
 note: app/models/product.rb:29: untyped in the signature of tag_with falls back to Value
 no problems, 3 notes
 ```
@@ -19,7 +19,7 @@ no problems, 3 notes
 ```
 $ rutile build examples/store --env test --out ../store-crate --runtime ../RustOnRails
 app/controllers/products_controller.rb:84: * falls back to Value
-app/models/product.rb:24: the value, str or int or nil, falls back to Value
+app/models/product.rb:24: the value, str, int or nil, falls back to Value
 app/models/product.rb:29: untyped in the signature of tag_with falls back to Value
 wrote ../store-crate (3 Value fallbacks)
 ```
