@@ -64,6 +64,7 @@ module Rutile
     # has to become a local before a call that borrows the `Ctx` mutably.
     # `hint` names that local; `extra` carries what a later call needs.
     Code = Data.define(:rust, :type, :ctx, :hint, :extra) do
+      singleton_class.remove_method(:[]) # Data's own, replaced without a redefinition warning
       def self.[](rust, type, ctx = :none, hint: nil, **extra) = new(rust:, type:, ctx:, hint:, extra:)
       def reads? = ctx != :none
       def writes? = ctx == :write
