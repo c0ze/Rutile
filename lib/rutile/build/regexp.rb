@@ -1,14 +1,16 @@
 module Rutile
   module Build
     # Ruby (Onigmo) regexps as Rust `regex` patterns that accept the same
-    # strings. Ruby's shorthand classes are ASCII where Rust's are Unicode,
-    # Ruby's `^` and `$` always match at line breaks, and Rust has no
-    # look-around, backreferences, atomic groups or possessive quantifiers.
+    # strings. Ruby's shorthand classes are ASCII where Rust's are Unicode
+    # (but `\b` is Unicode in both), Ruby's `^` and `$` always match at line
+    # breaks, and Rust has no look-around, backreferences, atomic groups or
+    # possessive quantifiers. Spaces are written `\x20` so that `(?x)`, which
+    # in Rust drops whitespace inside a class too, keeps them.
     module RubyRegexp
       OUTSIDE = { "d" => "[0-9]", "D" => "[^0-9]", "w" => "[a-zA-Z0-9_]", "W" => "[^a-zA-Z0-9_]",
-                  "s" => '[ \t\n\x0B\x0C\r]', "S" => '[^ \t\n\x0B\x0C\r]', "h" => "[0-9a-fA-F]", "H" => "[^0-9a-fA-F]",
-                  "b" => '(?-u:\b)', "B" => '(?-u:\B)', "Z" => '\n?\z', "e" => '\x1B', "0" => '\x00' }.freeze
-      INSIDE = { "d" => "0-9", "w" => "a-zA-Z0-9_", "s" => ' \t\n\x0B\x0C\r', "h" => "0-9a-fA-F", "e" => '\x1B',
+                  "s" => '[\x20\t\n\x0B\x0C\r]', "S" => '[^\x20\t\n\x0B\x0C\r]', "h" => "[0-9a-fA-F]",
+                  "H" => "[^0-9a-fA-F]", "b" => '\b', "B" => '\B', "Z" => '\n?\z', "e" => '\x1B', "0" => '\x00' }.freeze
+      INSIDE = { "d" => "0-9", "w" => "a-zA-Z0-9_", "s" => '\x20\t\n\x0B\x0C\r', "h" => "0-9a-fA-F", "e" => '\x1B',
                  "0" => '\x00' }.freeze
       # Escapes both engines read the same way.
       KEPT = %w[A z n t r f v a x u U p P].freeze
@@ -31,6 +33,12 @@ module Rutile
             quantified = false
             next
           end
+          if depth.positive? && c.match?(/\s/)
+            # Literal in a Ruby class even under /x; Rust's (?x) drops it.
+            out << format("\\x{%X}", c.ord)
+            i += 1
+            next
+          end
           if depth.positive?
             refuse.("a POSIX bracket") if c == "[" && source[i + 1] == ":"
             depth += 1 if c == "["
@@ -50,6 +58,7 @@ module Rutile
               refuse.("look-around") if rest.match?(/\A\?<?[=!]/)
               refuse.("an atomic group") if rest.start_with?("?>")
               refuse.("a comment group") if rest.start_with?("?#")
+              refuse.("a group named in quotes") if rest.start_with?("?'")
             when "*", "+", "?"
               refuse.("a possessive quantifier") if c == "+" && quantified
               out << c
@@ -74,12 +83,25 @@ module Rutile
       def escape(source, i, depth, out, refuse)
         e = source[i + 1] or refuse.("a trailing backslash")
         table = depth.zero? ? OUTSIDE : INSIDE
-        if table.key?(e)
+        if e == "0" && source[i + 2]&.match?(/[0-7]/)
+          refuse.("an octal escape")
+        elsif table.key?(e)
           out << table[e]
+        elsif %w[p P].include?(e) && source[i + 2] == "{" && source[i + 3] == "^"
+          # Ruby's \p{^Alpha} is Rust's \P{Alpha}.
+          close = source.index("}", i) or refuse.("an unclosed \\#{e}{")
+          out << "\\" << (e == "p" ? "P" : "p") << "{" << source[i + 4...close] << "}"
+          return close + 1
         elsif %w[p P x u].include?(e) && source[i + 2] == "{"
           close = source.index("}", i) or refuse.("an unclosed \\#{e}{")
           out << source[i..close]
           return close + 1
+        elsif %w[< >].include?(e) || !e.ascii_only?
+          # Literal in Ruby; `\<` and `\>` are word boundaries in Rust, which
+          # doesn't allow escaping a non-ASCII character at all.
+          out << e
+        elsif e.match?(/\s/)
+          out << format("\\x{%X}", e.ord)
         elsif KEPT.include?(e) || e.match?(/[^0-9A-Za-z]/)
           out << "\\" << e
         elsif e.match?(/[1-9k]/)
