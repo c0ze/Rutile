@@ -70,7 +70,7 @@ class SignaturesTest < Minitest::Test
     # The receiver first: the helper could assign @product.
     assert_rust_includes products, <<~RUST
       let product = self.product.ok_or(Error::Nil { what: "restock!" })?;
-      let amount = req.params.fetch("amount", 0).to_i()?;
+      let amount = req.params.fetch("amount", 0)?.to_i()?;
       let amount_2 = self.amount(req, amount)?;
       Product::restock_bang(&mut req.ctx, product, amount_2)?;
     RUST
@@ -78,7 +78,7 @@ class SignaturesTest < Minitest::Test
     assert_rust_includes products, 'Product::is_in_stock(&mut req.ctx, self.product.ok_or(Error::Nil { what: "in_stock?" })?, quantity)?'
     orders = controller("OrdersController")
     assert_rust_includes orders, 'Order::add_item(&mut req.ctx, self.order.ok_or(Error::Nil { what: "add_item" })?, product, ' \
-                                 'req.params.fetch("quantity", 1).to_i()?)?'
+                                 'req.params.fetch("quantity", 1)?.to_i()?)?'
     app = edited("app/controllers/products_controller.rb" => ->(ruby) { ruby.sub("@product.in_stock?(quantity)", "@product.in_stock?") })
     assert_rust_includes controller("ProductsController", app), 'Product::is_in_stock(&mut req.ctx, self.product.ok_or(Error::Nil { what: "in_stock?" })?, 1)?'
   end
@@ -171,7 +171,7 @@ class SignaturesTest < Minitest::Test
     app = edited("app/models/product.rb" => ->(ruby) { ruby.sub(/\nend\s*\z/, "\n\n  #: (Integer, Integer) -> Integer\n  def pair(a, b) = a + b\n" \
                                                                               "  #: () -> Integer\n  def bump\n    update!(stock: 1)\n    1\n  end\nend\n") },
                  "app/controllers/products_controller.rb" => ->(ruby) { ruby.sub("@product.price_for(quantity)", "@product.pair(params[:a].to_i, @product.bump)") })
-    assert_rust_includes controller("ProductsController", app), 'let a = req.params.value("a").to_i()?;'
+    assert_rust_includes controller("ProductsController", app), 'let a = req.params.value("a")?.to_i()?;'
   end
 
   def test_symbols_arent_strings

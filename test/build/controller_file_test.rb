@@ -74,10 +74,10 @@ class ControllerFileTest < Minitest::Test
       }
     RUST
     assert_rust_includes users, 'let user = User::find_by_bang(&mut req.ctx, "email", ' \
-                                'req.params.value("email").to_ruby_string().strip().downcase())?;'
+                                'req.params.value("email")?.to_s().strip().downcase())?;'
     assert_rust_includes rust("CommentsController"), <<~RUST
       fn set_post(&mut self, req: &mut Request) -> Result<()> {
-          self.post = Some(Post::find(&mut req.ctx, req.params.value("post_id"))?);
+          self.post = Some(Post::find(&mut req.ctx, req.params.value("post_id")?)?);
           Ok(())
       }
     RUST
@@ -105,7 +105,7 @@ class ControllerFileTest < Minitest::Test
   # Ruby reads `draft?` before `save` runs; so must the Rust.
   def test_a_hash_keeps_ruby_order_around_writes
     assert_rust_includes action("post = Post.find(params[:id])\nrender json: { was_draft: post.draft?, saved: post.save }"), <<~RUST
-      let post = Post::find(&mut req.ctx, req.params.value("id"))?;
+      let post = Post::find(&mut req.ctx, req.params.value("id")?)?;
       let was_draft = req.ctx[post].is_draft();
       Ok(Response::json(status::OK, json!({ "was_draft": was_draft, "saved": req.ctx.save(post)? })))
     RUST

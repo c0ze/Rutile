@@ -23,4 +23,12 @@ class NamesTest < Minitest::Test
     assert_equal 'r#"a"b"#', Names.raw('a"b')
     assert_equal '&["id", "name"]', Names.str_slice(%w[id name])
   end
+
+  # A string's `r"` isn't a raw string: `"order"` doesn't hide what follows.
+  def test_mentions_outside_strings
+    assert Names.mentions?(['json!({ "order": value_json(req.params.value("order")?) })'], "req")
+    assert Names.mentions?(['r#"a"b"# req'], "req")
+    refute Names.mentions?(['format!("{req} r")'], "req")
+    refute Names.mentions?(["self.req"], "req")
+  end
 end

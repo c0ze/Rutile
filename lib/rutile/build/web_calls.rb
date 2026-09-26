@@ -37,8 +37,12 @@ module Rutile
         unsupported!(node, "render with #{extra.join(", ")}") unless extra.empty?
         value = options["json"] or unsupported!(node, "render without json:")
         status = status_code(options["status"], node)
-        json = json_of(expr(value), value)
+        code = expr(value)
         @uses.rt("Response")
+        # Rails sends a String as it is, not as JSON; a Value may hold one.
+        return Code["Response::json_value(#{status}, #{owned(code)})", T::RESPONSE, code.ctx] if code.type == T::VALUE
+
+        json = json_of(code, value)
         Code["Response::json(#{status}, #{json.rust})", T::RESPONSE, json.ctx]
       end
 
@@ -174,11 +178,11 @@ module Rutile
         case name
         when "[]"
           key = symbol!(only(args, node), node)
-          Code["#{receiver.rust}.value(#{Names.str(key)})", T::VALUE, hint: key]
+          Code["#{receiver.rust}.value(#{Names.str(key)})?", T::VALUE, hint: key]
         when "fetch"
           unsupported!(node, "fetch without a default") unless args.size == 2
           key, default = args
-          Code["#{receiver.rust}.fetch(#{Names.str(symbol!(key, node))}, #{fetch_default(default, node)})", T::VALUE,
+          Code["#{receiver.rust}.fetch(#{Names.str(symbol!(key, node))}, #{fetch_default(default, node)})?", T::VALUE,
                hint: key.unescaped]
         when "require" then Code["#{receiver.rust}.require(#{Names.str(symbol!(only(args, node), node))})?", T::PARAMS, hint: "params"]
         when "permit" then Code["#{receiver.rust}.permit(#{Names.str_slice(args.map { symbol!(_1, node) })})", T::ATTRIBUTES, hint: "attributes"]
@@ -216,7 +220,7 @@ module Rutile
         return nil unless args.empty?
 
         case name
-        when "to_s" then Code["#{receiver.rust}.to_ruby_string()", T::STR, receiver.ctx, hint: receiver.hint]
+        when "to_s" then Code["#{receiver.rust}.to_s()", T::STR, receiver.ctx, hint: receiver.hint]
         when "to_i" then Code["#{receiver.rust}.to_i()?", T::INT, receiver.ctx, hint: receiver.hint]
         when "nil?" then Code["#{receiver.rust}.is_nil()", T::BOOL, receiver.ctx]
         when "blank?" then Code["#{receiver.rust}.is_blank()", T::BOOL, receiver.ctx]
