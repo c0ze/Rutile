@@ -12,6 +12,11 @@ class ModelsTest < Minitest::Test
     assert_equal [[], [], []], manifest["models"].map { _1["model_defaults"] }
   end
 
+  def test_inverses_are_the_ones_rails_resolved
+    assert_equal "post", model("Post")["associations"].find { _1["name"] == "comments" }["inverse_of"]
+    assert_equal "user", model("User")["associations"].find { _1["name"] == "posts" }["inverse_of"]
+  end
+
   def test_table_and_source
     post = model("Post")
     assert_equal "posts", post["table_name"]
@@ -27,9 +32,10 @@ class ModelsTest < Minitest::Test
   def test_associations_in_definition_order
     assert_equal(
       [
-        { "macro" => "belongs_to", "name" => "user", "class_name" => "User", "foreign_key" => "user_id", "options" => {} },
+        { "macro" => "belongs_to", "name" => "user", "class_name" => "User", "foreign_key" => "user_id", "inverse_of" => nil,
+          "options" => {} },
         { "macro" => "has_many", "name" => "comments", "class_name" => "Comment", "foreign_key" => "post_id",
-          "options" => { "dependent" => "destroy" } }
+          "inverse_of" => "post", "options" => { "dependent" => "destroy" } }
       ],
       model("Post")["associations"]
     )
@@ -37,7 +43,7 @@ class ModelsTest < Minitest::Test
 
   # Rails keeps an association's `-> { ... }` outside its options.
   def test_an_association_scope_is_recorded
-    reflection = Struct.new(:macro, :name, :class_name, :foreign_key, :options, :scope)
+    reflection = Struct.new(:macro, :name, :class_name, :foreign_key, :options, :scope, :inverse_of)
     scoped = reflection.new(:has_many, :admins, "Membership", "user_id", {}, -> { where(role: "admin") })
     assert_equal({ "scope" => true }, Rutile::Introspect::Models.association(scoped)["options"])
     plain = reflection.new(:has_many, :admins, "Membership", "user_id", {}, nil)

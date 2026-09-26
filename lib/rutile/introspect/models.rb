@@ -56,8 +56,18 @@ module Rutile
           "name" => reflection.name.to_s,
           "class_name" => reflection.class_name,
           "foreign_key" => reflection.foreign_key.to_s,
+          "inverse_of" => inverse_name(reflection),
           "options" => options
         }
+      end
+
+      # The inverse Rails settled on: `inverse_of:`, or the one it finds by
+      # name when no option (foreign_key:, a scope, inverse_of: false)
+      # stops it; nil when there's none.
+      def inverse_name(reflection)
+        return nil if reflection.options[:through] || reflection.options[:polymorphic]
+
+        reflection.inverse_of&.name&.to_s
       end
 
       # `normalizes :email, with: ...`: Rails wraps the attribute's type in a

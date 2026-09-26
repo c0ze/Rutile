@@ -216,13 +216,16 @@ module Rutile
           "#{Names.str(link["foreign_key"])}, #{Names.str(source["foreign_key"])});"
       end
 
-      # has_many's automatic inverse: the target's belongs_to back to this
-      # model on the same foreign key.
+      # has_many's inverse, as Rails resolved it: the target's belongs_to
+      # back to this model, or none (inverse_of: false, or a foreign_key:
+      # option without inverse_of:, which stops Rails looking).
       def inverse(assoc)
-        back = @app.model(assoc["class_name"])["associations"].find do
-          _1["macro"] == "belongs_to" && _1["class_name"] == @name && _1["foreign_key"] == assoc["foreign_key"]
+        name = assoc.fetch("inverse_of") or return "None"
+        back = @app.association(assoc["class_name"], name)
+        unless back && back["macro"] == "belongs_to" && back["class_name"] == @name
+          raise Unsupported, "#{@path}: has_many :#{assoc["name"]} with the inverse :#{name} isn't supported yet"
         end
-        back ? "Some(&#{assoc["class_name"]}::#{Names.constant(back["name"])})" : "None"
+        "Some(&#{assoc["class_name"]}::#{Names.constant(name)})"
       end
 
       def enum_predicates

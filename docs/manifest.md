@@ -65,7 +65,7 @@ Every non-abstract Active Record model whose class is defined under `app/`, sort
   "attributes": {"id": "integer", "status": "integer", "title": "string", "...": "..."},
   "associations": [
     {"macro": "has_many", "name": "comments", "class_name": "Comment",
-     "foreign_key": "post_id", "options": {"dependent": "destroy"}}
+     "foreign_key": "post_id", "inverse_of": "post", "options": {"dependent": "destroy"}}
   ],
   "validators": [
     {"kind": "length", "class": "ActiveRecord::Validations::LengthValidator",
@@ -74,6 +74,8 @@ Every non-abstract Active Record model whose class is defined under `app/`, sort
   "enums": {"status": {"draft": 0, "published": 1}}
 }
 ```
+
+`inverse_of` is the association on the other model that Rails treats as this one's inverse, from the `inverse_of:` option or found by name, and null when there's none (a `through:`, a polymorphic `belongs_to`, `inverse_of: false`, or a `foreign_key:` option without `inverse_of:`).
 
 `normalizations` maps each attribute given `normalizes` to its normalizers, sorted by attribute. Each `normalizes` naming the attribute adds one, and they're listed in the order Rails runs them: the first declared runs first. `with` is usually `{"proc": <location>}`.
 

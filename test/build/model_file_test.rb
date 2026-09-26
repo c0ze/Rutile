@@ -25,6 +25,14 @@ class ModelFileTest < Minitest::Test
     assert_rust_includes rust("Comment"), 'pub const POST: BelongsTo<Comment, Post> = BelongsTo::new("post", "post_id");'
   end
 
+  # The inverse is the one Rails settled on; with inverse_of: false (or a
+  # foreign_key: option) there's none, and a built child loads its parent.
+  def test_a_has_many_without_an_inverse_in_rails_has_none
+    comments = ->(m) { m["models"].find { _1["name"] == "Post" }["associations"].find { _1["name"] == "comments" } }
+    none = app_with { comments.(_1)["inverse_of"] = nil }
+    assert_rust_includes rust("Post", none), 'HasMany::new("comments", "post_id", None);'
+  end
+
   def test_enum_predicates
     assert_rust_includes rust("Post"), 'pub fn is_published(&self) -> bool { self.status.as_deref() == Some("published") }'
     assert_rust_includes rust("Post"), 'pub fn is_draft(&self) -> bool { self.status.as_deref() == Some("draft") }'
