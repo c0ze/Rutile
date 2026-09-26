@@ -19,6 +19,7 @@ class CrateTest < Minitest::Test
       assert_equal files, Dir.glob("**/*.rs", base: File.join(out, "src")).sort
       assert_includes File.read(File.join(out, "src/models/mod.rs")), "pub use post::{Post, PostScopes};"
       assert_includes File.read(File.join(out, "src/main.rs")), "blog::routes::routes()"
+      assert_includes File.read(File.join(out, "src/main.rs")), "limits: Limits::from_env()?,"
       assert_match(/^rustonrails = \{ path = ".*RustOnRails" \}$/, File.read(File.join(out, "Cargo.toml")))
     end
   end
