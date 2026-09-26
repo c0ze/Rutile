@@ -19,6 +19,14 @@ The Value fallback (`feature/value-fallback`).
 - Without a signature, a method's early returns type it: one class, an Option of it, or a Value.
 - Statically: `/` and `%` with Ruby's floor semantics and ZeroDivisionError, an Integer with a Float as a Float, `String + String`, `T` and `T?` branches as `T?`, and nil interpolating as `""`.
 - The store gains `double` and `availability`: 20 integration tests pass on the Rust build.
+- From the branch's review ([plan](docs/superpowers/plans/2026-09-26-value-fallback.md)):
+  - nil and a Value make a Value, not an Option of one;
+  - ordering against nil raises;
+  - `render json:` of a String Value sends the String;
+  - a Time compares with a Date as Active Support does;
+  - `return` works in lambdas;
+  - a retry keeps a helper's imports;
+  - the retries that couldn't settle, the moves and the warnings it found are fixed or refused.
 
 ## 0.7.0
 

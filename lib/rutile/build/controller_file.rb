@@ -66,6 +66,18 @@ module Rutile
 
       def ivar_type(name) = @ivars[name] || (@filter_failed ? raise(Skipped, name) : nil)
 
+      # What an action's translation has changed here, for a retry to undo:
+      # the helpers it translated (their imports go with the attempt) and
+      # the instance variables it typed.
+      def checkpoint = [@helpers.dup, @ivars.dup, @filter_failed]
+
+      # In place: a helper being translated assigns into this same Hash.
+      def rollback(state)
+        @helpers.replace(state[0])
+        @ivars.replace(state[1])
+        @filter_failed = state[2]
+      end
+
       # A method of this controller that isn't an action, translated the
       # first time something calls it. A filter returns nothing; a helper
       # returns its last value; a rescue handler returns a response, and

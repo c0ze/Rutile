@@ -15,11 +15,12 @@ module Rutile
       # Translating again with a local as a Value, or with what the method
       # returns (a Value unless `returns` says).
       class Retype < StandardError
-        attr_reader :local, :returns
+        attr_reader :local, :returns, :node
 
-        def initialize(local = nil, returns: nil)
+        def initialize(local = nil, node:, returns: nil)
           @local = local
           @returns = returns
+          @node = node
           super("retype #{local || "the returned value"}")
         end
       end
@@ -44,17 +45,22 @@ module Rutile
 
       # The body, translated again each time a local or its value turns
       # out to need a Value. Whatever the attempt before collected is
-      # dropped, so it leaves no stray imports or names.
+      # dropped, so it leaves no stray imports or names; a controller
+      # forgets the helpers and instance variables it translated too.
+      # Each attempt retypes a local or widens the returned type, so there
+      # are only so many.
       def retyped
         saved = [@locals.dup, @params.dup, @taken.dup, @renames.dup, @uses.snapshot]
+        checkpoint = @controller.checkpoint if @controller.respond_to?(:checkpoint)
         attempts = 0
         begin
           yield
         rescue Retype => e
-          raise if (attempts += 1) > 20
+          unsupported!(e.node, "a value whose type keeps changing") if (attempts += 1) > @writes.size + 4
 
           @locals, @params, @taken, @renames = saved[0..3].map(&:dup)
           @uses.restore(saved[4])
+          @controller.rollback(checkpoint) if checkpoint
           if e.local
             (@dynamic ||= Set.new) << e.local
           else
@@ -69,7 +75,8 @@ module Rutile
       # returns is its type to begin with.
       def infer_returns!(node)
         code = node.arguments ? value(only(node.arguments.arguments, node)) : Code["None", T::NIL]
-        raise Retype.new(returns: code.type)
+        unsupported!(node, "returning a Symbol") if code.extra[:symbol]
+        raise Retype.new(returns: code.type, node:)
       end
 
       # A value the method returns that its inferred type doesn't take: nil
@@ -77,35 +84,41 @@ module Rutile
       def refine_returns!(want, code, node)
         inner = ->(type) { type.nilable? ? type.inner : type }
         types = [want, code.type].reject { _1 == T::NIL }
-        if types.map(&inner).uniq.size == 1
-          raise Retype.new(returns: T.nilable(inner.(types.first)))
+        if types.map(&inner).uniq.size == 1 && inner.(types.first) != T::VALUE
+          raise Retype.new(returns: T.nilable(inner.(types.first)), node:)
         end
         return unless scalar?(want) && scalar?(code.type)
+        # A Value holds nil too: it's never an Option.
+        raise Retype.new(returns: T::VALUE, node:) if types.map(&inner) == [T::VALUE]
 
-        fallback!(node, "the value, #{describe(want)} or #{describe(code.type)},")
-        raise Retype.new(returns: T::VALUE)
+        fallback!(node, "the value, #{classes(want, code.type)},")
+        raise Retype.new(returns: T::VALUE, node:)
       end
 
       # A local assigned values of different classes is a Value from its
       # first assignment; anything else keeps its one type.
       def retype!(name, known, code, node)
-        unless scalar?(known.type) && scalar?(code.type)
-          unsupported!(node, code.type == T::NIL ? "a local assigned nil" : "giving #{name} a new type")
+        unless scalar?(known.type) && scalar?(code.type) && !@dynamic&.include?(name)
+          unsupported!(node, code.type == T::NIL && known.equal?(code) ? "a local assigned nil" : "giving #{name} a new type")
         end
-        fallback!(node, "#{name}, assigned #{describe(known.type)} and #{describe(code.type)},")
-        raise Retype, name
+        # A Value would hold a Symbol as a String, which no Symbol equals.
+        unsupported!(node, "a Symbol in #{name}, which is assigned again") if [known, code].any? { _1.extra[:symbol] }
+
+        fallback!(node, "#{name}, assigned #{classes(known.type, code.type, joiner: "and")},")
+        raise Retype.new(name, node:)
       end
 
       def local_value(name, code) = @dynamic&.include?(name) ? (to_value(code) || code) : code
 
       # The value a method or helper ends on, when its branches differ.
       def retype_returns!(node, a, b)
-        unsupported!(node, "an if whose branches return different types") unless @returns.nil? && @mode == :value
+        # A block's value isn't what the method returns.
+        unsupported!(node, "an if whose branches return different types") unless @returns.nil? && @mode == :value && !@block
         refine_returns!(a, Code["", b], node) if [a, b].include?(T::NIL) || [a, b].any?(&:nilable?)
         unsupported!(node, "an if whose branches return different types") unless scalar?(a) && scalar?(b)
 
-        fallback!(node, "the value, #{describe(a)} or #{describe(b)},")
-        raise Retype
+        fallback!(node, "the value, #{classes(a, b)},")
+        raise Retype.new(node:)
       end
 
       # `a + b` and the rest with a Value on either side.
@@ -118,7 +131,8 @@ module Rutile
 
       # `==` and the ordering operators with a Value on either side.
       def dynamic_compare(node, name, left, right)
-        if [left, right].any? { _1.type == T::NIL }
+        # Ordering against nil raises, as Ruby's does; only == and != test it.
+        if %w[== !=].include?(name) && [left, right].any? { _1.type == T::NIL }
           value = left.type == T::NIL ? right : left
           return "#{name == "==" ? "" : "!"}#{value.rust}.is_nil()"
         end
@@ -137,8 +151,14 @@ module Rutile
         values = [a, b].map { to_value(_1) }
         unsupported!(node, "an if whose branches have different types") if values.any?(&:nil?)
 
-        fallback!(node, "the if's value, #{describe(a.type)} or #{describe(b.type)},")
-        [T::VALUE, *values.map(&:rust)]
+        fallback!(node, "the if's value, #{classes(a.type, b.type)},") unless [a.type, b.type].include?(T::VALUE)
+        [T::VALUE, *values.map { owned(_1, T::VALUE) }]
+      end
+
+      # `types` as the classes they hold: "int, str or nil".
+      def classes(*types, joiner: "or")
+        names = types.flat_map { _1.nilable? ? [_1.inner, T::NIL] : [_1] }.uniq.map { describe(_1) }
+        names.size > 1 ? "#{names[0..-2].join(", ")} #{joiner} #{names.last}" : names.first
       end
     end
   end

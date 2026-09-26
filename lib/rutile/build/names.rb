@@ -52,8 +52,9 @@ module Rutile
       # `&["id", "name"]`
       def str_slice(values) = "&[#{values.map { str(_1) }.join(", ")}]"
 
-      # Rust source without its string literals, raw ones included.
-      def code_only(rust) = rust.gsub(/r(#*)".*?"\1/m, "").gsub(/"(?:[^"\\]|\\.)*"/m, "\"\"")
+      # Rust source without its string literals, raw ones included, read
+      # left to right so an `r"` inside a string doesn't start a raw one.
+      def code_only(rust) = rust.gsub(/(?<!\w)r(#*)".*?"\1|"(?:[^"\\]|\\.)*"/m, "\"\"")
 
       # Whether generated `lines` use the variable `name`, outside strings.
       # `self.name` is a field, not the variable; `..name` is a range.

@@ -63,7 +63,9 @@ Each of these is refused with the file and line rather than compiled wrong. They
 
 ## Runtime differences only verify can catch
 
-- The Value fallback raises where Ruby would go on for a few operations it doesn't carry out: `Date - Date` (a Rational in Ruby), `Date + 1.5`, and `String#%` (Ruby's `format`).
+- The Value fallback raises where Ruby would go on for a few operations it doesn't carry out: `Date - Date` (a Rational in Ruby), `Date ± 1.5`, `String#%` (Ruby's `format`), and a Date or Time past chrono's range (about ±262,000 years), which Ruby's reaches.
+- A param holding an array or a hash raises when it's read as a value (`params[:ids]` given `[1, 2]`), where Rails hands the array or hash on: a Value holds only scalars, and nil would answer `present?`, `==` and `render` differently.
+- `Time + Float` keeps microseconds, so a fraction of a microsecond rounds where Ruby's Rational time wouldn't.
 
 - An association doesn't keep the children built on it: `order.line_items.build(...)` then `order.line_items.size` counts the saved rows only, where Rails adds the unsaved one.
 - `find_each` queries one batch at a time, but the records it loads stay in the request's `Ctx` until the request ends, since a handle into them may live on.

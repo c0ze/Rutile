@@ -43,7 +43,7 @@ class NumbersTest < Minitest::Test
     translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
     lines, type = translator.body(Prism.parse("(1 + 2.5) % 2").value.statements, :value)
     assert_equal Rutile::Build::T::FLOAT, type
-    assert_rust_includes lines.join, "Ok(mod_floats((1 as f64) + 2.5, (2 as f64))?)"
+    assert_rust_includes lines.join, "Ok(mod_floats((1 as f64) + 2.5, 2 as f64)?)"
     assert_rust_includes callback('self.title = "a" + "b"'), 'Some(format!("{}{}", "a", "b"))'
   end
 
@@ -53,7 +53,7 @@ class NumbersTest < Minitest::Test
       ruby.sub("@post = Post.find(params[:id])", "@post = Post.find([params.fetch(:id, 1).to_i, 1].max)")
     end })
     rust = Rutile::Build::ControllerFile.new(app, "PostsController").to_rust
-    assert_rust_includes rust, 'Post::find(&mut req.ctx, i64::max(req.params.fetch("id", 1).to_i()?, 1))?'
+    assert_rust_includes rust, 'Post::find(&mut req.ctx, i64::max(req.params.fetch("id", 1)?.to_i()?, 1))?'
   end
 
   def test_fetch_needs_a_literal_default

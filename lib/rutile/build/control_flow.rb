@@ -71,7 +71,7 @@ module Rutile
         if @mode == :value && @returns
           code = node.arguments ? value(only(node.arguments.arguments, node)) : Code["None", T::NIL]
           code = returned(code, node)
-          return @lines << "return Ok(#{owned(code, code.type)});"
+          return @lines << (@result ? "return Ok(#{owned(code, code.type)});" : "return #{owned(code, code.type)};")
         end
         unsupported!(node, "return with a value") if node.arguments
         case @mode
@@ -84,6 +84,8 @@ module Rutile
       # A value the method returns, as the type its signature declares: a
       # value where it may be nil becomes `Some`, and nil `None`.
       def returned(code, node)
+        # A method's String result compares as one; a Symbol wouldn't.
+        unsupported!(node, "returning a Symbol") if code.extra[:symbol]
         want = @returns
         return code if code.type == want
         return to_value(code) || unsupported!(node, "returning #{describe(code.type)} as a Value") if want == T::VALUE
