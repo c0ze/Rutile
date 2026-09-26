@@ -22,9 +22,11 @@ module Rutile
         statements = block_statements(node.block, node)
         unsupported!(node, "an empty transaction block") if statements.empty?
         lines, type = closure_body(statements, value)
+        unsupported!(node, "using the value of && or ||") if type == T::COND
         req = @env == :model ? "ctx" : "req"
+        param = Names.mentions?(lines, req) ? req : "_#{req}"
         # A block that only raises leaves Rust nothing to infer its type from.
-        head = "#{req}.transaction_block#{"::<()>" if rollback?(statements.last)}(|#{req}| {"
+        head = "#{req}.transaction_block#{"::<()>" if rollback?(statements.last)}(|#{param}| {"
         unless value
           @lines.push(head, *lines, *("Ok(())" unless rollback?(statements.last)), "})?;")
           return
@@ -76,8 +78,13 @@ module Rutile
           constant_path(node.arguments&.arguments&.first) == ROLLBACK
       end
 
+      # Nil for a path with a dynamic part (`self.class::Rollback`).
       def constant_path(node)
-        node.full_name.delete_prefix("::") if node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+        return nil unless node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+
+        node.full_name.delete_prefix("::")
+      rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError
+        nil
       end
     end
   end

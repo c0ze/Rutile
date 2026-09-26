@@ -63,6 +63,12 @@ Each of these is refused with the file and line rather than compiled wrong. They
 
 ## Runtime differences only verify can catch
 
+- The Value fallback raises where Ruby would go on for a few operations it doesn't carry out: `Date - Date` (a Rational in Ruby), `Date + 1.5`, and `String#%` (Ruby's `format`).
+
+- An association doesn't keep the children built on it: `order.line_items.build(...)` then `order.line_items.size` counts the saved rows only, where Rails adds the unsaved one.
+- `find_each` queries one batch at a time, but the records it loads stay in the request's `Ctx` until the request ends, since a handle into them may live on.
+- Two locals naming one relation (`b = a`) are two copies here: loading one doesn't load the other, where in Ruby they are one object.
+
 - The tracker's tests exercise the JSON formats of dates and times, error message order, `ILIKE` against Rails' SQL, token length and email normalization, and they pass. Other apps will exercise more.
 - `record.update!(attributes)` on a nil record reads the record before the attributes, so with `@product` nil and the params missing, Rust answers 500 (NoMethodError) where Rails answers 400 (ParameterMissing). Both are errors; only the status differs.
 - Where RustOnRails doesn't copy Rails, it fails rather than guess: a date string in a format only `Date._parse` reads is a cast error (a 500), not a date or nil. One case stays silent: after params assign a numeric column a value that isn't an integer ("1.5"), app code writing back exactly its cast (1) leaves numericality checking "1.5", where Rails checks 1.

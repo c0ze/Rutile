@@ -26,12 +26,13 @@ class CalculationsTest < Minitest::Test
                      low: Product.minimum(:price_cents), top: Product.maximum(:name), first: Order.minimum(:status) }
     RUBY
     assert_rust_includes rust, 'Product::all().count(&mut req.ctx)?'
-    assert_rust_includes rust, 'Product::all().where_eq("active", true).count(&mut req.ctx)?'
+    # `size` answers from loaded records, if a relation in a local has them.
+    assert_rust_includes rust, 'Product::all().where_eq("active", true).size(&mut req.ctx)?'
     assert_rust_includes rust, 'Product::all().sum::<i64>(&mut req.ctx, "stock")?'
     assert_rust_includes rust, 'Product::all().minimum::<i64>(&mut req.ctx, "price_cents")?'
     assert_rust_includes rust, 'Product::all().maximum::<String>(&mut req.ctx, "name")?'
-    # An enum's minimum is its label, as Rails casts it.
-    assert_rust_includes rust, 'Order::all().minimum::<String>(&mut req.ctx, "status")?'
+    # An enum's minimum is its integer: Rails casts by the enum's subtype.
+    assert_rust_includes rust, 'Order::all().minimum::<i64>(&mut req.ctx, "status")?'
   end
 
   # A column that's never NULL (and isn't an enum) plucks without nils.
@@ -48,9 +49,10 @@ class CalculationsTest < Minitest::Test
                      e: Product.order(:price_cents).first&.name }
     RUBY
     assert_rust_includes rust, 'let a = Product::all().exists(&mut req.ctx)?;'
-    assert_rust_includes rust, 'let b = Product::all().exists(&mut req.ctx)?;'
-    assert_rust_includes rust, 'let c = !Product::all().where_eq("stock", 0).exists(&mut req.ctx)?;'
-    assert_rust_includes rust, 'let d = !Product::all().exists(&mut req.ctx)?;'
+    # any?, empty? and none? use loaded records when there are some.
+    assert_rust_includes rust, 'let b = Product::all().is_any(&mut req.ctx)?;'
+    assert_rust_includes rust, 'let c = !Product::all().where_eq("stock", 0).is_any(&mut req.ctx)?;'
+    assert_rust_includes rust, 'let d = !Product::all().is_any(&mut req.ctx)?;'
     assert_rust_includes rust, 'let product = Product::all().order_asc("price_cents").first(&mut req.ctx)?;'
     assert_rust_includes rust, '"e": product.and_then(|product| req.ctx[product].name.clone())'
   end
@@ -125,5 +127,19 @@ class CalculationsTest < Minitest::Test
     refused("3: code after raise", "Product.transaction do\n  raise ActiveRecord::Rollback\n  Product.count\nend\nhead :ok")
     refused("1: raise, except raise ActiveRecord::Rollback,", "raise ArgumentError\nhead :ok")
     refused("1: raise where a value belongs", "raise ArgumentError")
+    refused("1: using the value of && or ||", "x = Product.transaction { Product.first && true }\nhead :ok")
+    refused("1: raise, except raise ActiveRecord::Rollback,", "raise self.class::Rollback\nhead :ok")
+    refused("1: transaction on self.class::Base", "self.class::Base.transaction { Product.count }\nhead :ok")
+  end
+
+  # A block that doesn't touch the database names its request `_req`; a
+  # void method ending in a raise needs no `Ok(())` after it.
+  def test_what_the_closure_and_body_need
+    assert_rust_includes action("x = Product.transaction { 1 }\nrender json: { x: x }"), "req.transaction_block(|_req| { Ok(1) })?"
+    app = scratch_app({ "app/models/product.rb" => lambda do |ruby|
+      ruby.sub(/\nend\s*\z/, "\n\n  #: () -> void\n  def give_up!\n    update!(stock: 0)\n    raise ActiveRecord::Rollback\n  end\nend\n")
+    end }, manifest: StoreHelper.manifest, from: StoreHelper::APP)
+    rust = model("Product", app)
+    assert_rust_includes rust, "ctx.save_bang(product)?; return Err(Error::Rollback); }"
   end
 end

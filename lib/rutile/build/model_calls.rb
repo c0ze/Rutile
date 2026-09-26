@@ -100,7 +100,7 @@ module Rutile
         inner = receiver.type.inner
         case name
         when "nil?" then return Code["#{receiver.rust}.is_none()", T::BOOL, receiver.ctx]
-        when "to_s" then return inner == T::STR ? Code["#{receiver.rust}.unwrap_or_default()", T::STR, receiver.ctx, hint: receiver.hint] : nil
+        when "to_s" then return inner == T::STR ? Code["#{owned(receiver)}.unwrap_or_default()", T::STR, receiver.ctx, hint: receiver.hint] : nil
         when "present?", "blank?"
           if inner == T::STR
             @uses.rt("Blank")

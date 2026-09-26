@@ -67,7 +67,7 @@ module Rutile
 
         lines = translate(block.body, block: true)
         ctx, record = parameter_names(lines)
-        "|#{ctx}, #{record}| {\n#{lines.join("\n")}\nOk(())\n}"
+        "|#{ctx}, #{record}| {\n#{[*lines, *Names.ended(lines)].join("\n")}\n}"
       end
 
       # The model's scope trait, which mod.rs re-exports.
@@ -244,7 +244,7 @@ module Rutile
         @uses.rt("Ctx", "Handle", "Result")
         "// #{@path}:#{node.location.start_line}\n" \
           "fn #{Names.method(name)}(#{ctx}: &mut Ctx, #{record}: Handle<#{@name}>) -> Result<()> {\n" \
-          "#{lines.join("\n")}\nOk(())\n}"
+          "#{[*lines, *Names.ended(lines)].join("\n")}\n}"
       end
 
       def translate(body, block: false)
