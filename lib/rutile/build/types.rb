@@ -29,6 +29,8 @@ module Rutile
       def self.errors(model) = Type.new(kind: :errors, model:, inner: nil)
       def self.where_chain(model) = Type.new(kind: :where_chain, model:, inner: nil)
       def self.klass(model) = Type.new(kind: :class, model:, inner: nil)
+      # An Active Job class; `model` names it.
+      def self.job(name) = Type.new(kind: :job, model: name, inner: nil)
       def self.nilable(inner) = Type.new(kind: :nilable, model: nil, inner:)
       # What `map` with a block gives: a Vec.
       def self.list(inner) = Type.new(kind: :list, model: nil, inner:)

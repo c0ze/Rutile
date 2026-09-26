@@ -9,6 +9,7 @@ Rails.application.routes.draw do
     end
     member do
       post :restock
+      post :restock_later
       get :quote
       get :availability
     end

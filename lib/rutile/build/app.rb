@@ -86,6 +86,10 @@ module Rutile
       def scope(name, scope) = model(name)["scopes"].find { _1["name"] == scope.to_s }
 
       def controllers = manifest.fetch("controllers")
+
+      # The Active Job classes, when Sidekiq runs them: what Rutile compiles.
+      def jobs = manifest.dig("jobs", "adapter") == "sidekiq" ? manifest.dig("jobs", "classes") : []
+      def job(name) = jobs.find { _1["name"] == name }
       def controller(name) = controllers.find { _1["name"] == name } || raise(Error, "no controller #{name}")
       def routes = manifest.fetch("routes")
     end

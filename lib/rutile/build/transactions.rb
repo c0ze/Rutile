@@ -23,7 +23,7 @@ module Rutile
         unsupported!(node, "an empty transaction block") if statements.empty?
         lines, type = closure_body(statements, value)
         unsupported!(node, "using the value of && or ||") if type == T::COND
-        req = @env == :model ? "ctx" : "req"
+        req = %i[model job].include?(@env) ? "ctx" : "req"
         param = Names.mentions?(lines, req) ? req : "_#{req}"
         # A block that only raises leaves Rust nothing to infer its type from.
         head = "#{req}.transaction_block#{"::<()>" if rollback?(statements.last)}(|#{param}| {"

@@ -1,5 +1,5 @@
 class ProductsController < ApplicationController
-  before_action :set_product, only: %i[show update restock quote availability]
+  before_action :set_product, only: %i[show update restock restock_later quote availability]
 
   def index
     render json: Product.available.order(:name)
@@ -86,6 +86,12 @@ class ProductsController < ApplicationController
 
   def availability
     render json: { id: @product.id, availability: @product.availability, tagged: @product.tag_with(params[:tag]) }
+  end
+
+  # The same restock, on a worker: Sidekiq's in Ruby, or the Rust build's.
+  def restock_later
+    RestockJob.perform_later(@product, amount(params.fetch(:amount, 1).to_i))
+    render json: { queued: true }, status: :accepted
   end
 
   def quote

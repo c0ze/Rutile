@@ -132,11 +132,11 @@ module Rutile
       end
 
       # How the Ctx is spelled: receiver or index, mutable argument, shared argument.
-      def ctx_recv = @env == :model ? "ctx" : "req.ctx"
-      def ctx_mut = @env == :model ? "ctx" : "&mut req.ctx"
-      def ctx_ref = @env == :model ? "ctx" : "&req.ctx"
+      def ctx_recv = %i[model job].include?(@env) ? "ctx" : "req.ctx"
+      def ctx_mut = %i[model job].include?(@env) ? "ctx" : "&mut req.ctx"
+      def ctx_ref = %i[model job].include?(@env) ? "ctx" : "&req.ctx"
 
-      def need_ctx!(node) = (%i[model controller].include?(@env) || unsupported!(node, "database access here"))
+      def need_ctx!(node) = (%i[model controller job].include?(@env) || unsupported!(node, "database access here"))
 
       # Models are imported, except the one whose file this is.
       def use_model(name) = (@uses.model(name) unless %i[model scope].include?(@env) && name == @model)

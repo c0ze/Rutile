@@ -39,14 +39,18 @@ module Rutile
       rails!(env, app_dir, "db:prepare")
       port = free_port
       database_url, secret_key_base = settings(app_dir, env)
+      # The jobs' Redis is the one the app's Sidekiq uses.
+      redis_url = env.fetch("REDIS_URL") { ENV.fetch("REDIS_URL", nil) }
       server_env = { "DATABASE_URL" => database_url, "SECRET_KEY_BASE" => secret_key_base, "BIND" => "127.0.0.1:#{port}",
-                     "WORKERS" => "4" }
+                     "WORKERS" => "4", "REDIS_URL" => redis_url }
       server = spawn(server_env, binary)
       begin
         Servers.wait_for_up("http://127.0.0.1:#{port}/up", server)
         out.puts "#{File.basename(binary)} listening on 127.0.0.1:#{port}"
         log = File.join(Dir.mktmpdir("rutile-verify"), "forwarded")
+        # A test that works a job can run the build's worker: RUTILE_BINARY work.
         test_env = env.merge("RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1", "RUTILE_VERIFY_LOG" => log,
+                             "RUTILE_BINARY" => binary, "RUTILE_DATABASE_URL" => database_url,
                              "RUBYOPT" => [ENV.fetch("RUBYOPT", nil), "-r#{HOOK}"].compact.join(" "))
         passed = Rutile.unbundled { system(test_env, rails, "test", *tests, chdir: app_dir) }
         forwarded = File.exist?(log) ? File.read(log).to_i : 0

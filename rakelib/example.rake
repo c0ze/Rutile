@@ -11,11 +11,16 @@ EXAMPLE_APP = File.expand_path("../examples/#{EXAMPLE}", __dir__)
 
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
-EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
+EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil,
+                "REDIS_URL" => "redis://127.0.0.1:#{ENV.fetch("EXAMPLE_REDIS_PORT", "54379")}/0" }.freeze
 
 def prepare_database(app)
   Dir.chdir(app) { Rutile.unbundled { sh(EXAMPLE_ENV, "bin/rails", "db:prepare") } }
 end
+
+# A Redis for the examples' jobs, beside the Postgres cluster.
+REDIS_DIR = File.expand_path("../tmp/redis", __dir__)
+REDIS_PORT = ENV.fetch("EXAMPLE_REDIS_PORT", "54379")
 
 def pg_running?
   system("pg_ctl", "-D", PG_DIR, "status", out: File::NULL, err: File::NULL)
@@ -39,14 +44,30 @@ namespace :pg do
   end
 end
 
+namespace :redis do
+  desc "Start the local Redis for the examples' jobs"
+  task :start do
+    FileUtils.mkdir_p(REDIS_DIR)
+    next if system("redis-cli", "-p", REDIS_PORT, "ping", out: File::NULL, err: File::NULL)
+
+    sh "redis-server", "--port", REDIS_PORT, "--bind", "127.0.0.1", "--dir", REDIS_DIR, "--daemonize", "yes",
+       "--logfile", File.join(REDIS_DIR, "redis.log"), "--save", ""
+  end
+
+  desc "Stop the local Redis"
+  task :stop do
+    system("redis-cli", "-p", REDIS_PORT, "shutdown", "nosave", out: File::NULL, err: File::NULL)
+  end
+end
+
 namespace :example do
   desc "Create and migrate the example app's test database"
-  task(db: "pg:start") { prepare_database(EXAMPLE_APP) }
+  task(db: ["pg:start", "redis:start"]) { prepare_database(EXAMPLE_APP) }
 
   # Rutile's own tests introspect the blog, whatever EXAMPLE says.
   task(blog_db: "pg:start") { prepare_database(File.expand_path("../examples/blog", __dir__)) }
   task(tracker_db: "pg:start") { prepare_database(File.expand_path("../examples/tracker", __dir__)) }
-  task(store_db: "pg:start") { prepare_database(File.expand_path("../examples/store", __dir__)) }
+  task(store_db: ["pg:start", "redis:start"]) { prepare_database(File.expand_path("../examples/store", __dir__)) }
 
   desc "Check the example app for anything rutile build can't compile"
   task check: :db do

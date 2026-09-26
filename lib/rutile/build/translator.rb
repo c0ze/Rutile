@@ -31,6 +31,7 @@ module Rutile
       include Dynamic
       include Sessions
       include Scalars
+      include JobCalls
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
