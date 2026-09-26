@@ -56,14 +56,16 @@ module Rutile
       end
 
       # Translates `nodes` left to right. Before one that runs statements or
-      # writes the Ctx, the earlier ones that read it become locals, so they
-      # see the state Ruby would.
+      # writes the Ctx, the earlier ones that read it or can fail become
+      # locals, so they see the state Ruby would and fail first; so do
+      # instance variables, before statements or a helper that may assign them.
       def in_order(nodes)
         nodes.each_with_object([]) do |node, codes|
           mark = @lines.size
           code = yield(node)
           if code.writes? || @lines.size > mark
-            codes.each_index.select { codes[_1].reads? }.each_with_index do |i, n|
+            assigns = @lines.size > mark || helper_call?(code)
+            codes.each_index.select { stale?(codes[_1], assigns) }.each_with_index do |i, n|
               name = fresh(codes[i].hint || "value")
               @lines.insert(mark + n, "let #{name} = #{codes[i].rust};")
               codes[i] = Code[name, codes[i].type, hint: codes[i].hint]
@@ -80,8 +82,10 @@ module Rutile
       def after(receiver)
         mark = @lines.size
         result = yield
-        writes = [result].flatten.any? { _1.is_a?(Code) && _1.writes? }
-        return [receiver, result] unless receiver.reads? && (writes || @lines.size > mark)
+        codes = [result].flatten.grep(Code)
+        writes = codes.any?(&:writes?) || @lines.size > mark
+        assigns = @lines.size > mark || codes.any? { helper_call?(_1) }
+        return [receiver, result] unless writes && (receiver.reads? || (ivar_read?(receiver) && assigns))
 
         name = fresh(receiver.hint || "value")
         @lines.insert(mark, "let #{name} = #{receiver.rust};")
@@ -90,6 +94,16 @@ module Rutile
 
       # Fallible (`?`) or writing: running it later, or twice, would differ.
       def impure?(code) = code.writes? || code.rust.include?("?")
+
+      # Whether `code`, written before something that writes the Ctx (and
+      # `assigns` instance variables), must become a local to run first.
+      def stale?(code, assigns) = code.reads? || impure?(code) || (assigns && ivar_read?(code))
+
+      # A controller helper's call, which may assign instance variables.
+      def helper_call?(code) = code.rust.match?(/\bself\.\w+\(/)
+
+      # A read of an instance variable (a controller field).
+      def ivar_read?(code) = code.rust.match?(/\bself\.\w+(?![\w(])/)
 
       # Literals can't observe or change anything.
       def literal?(node)

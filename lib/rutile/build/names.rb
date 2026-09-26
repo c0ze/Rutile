@@ -56,7 +56,22 @@ module Rutile
       def code_only(rust) = rust.gsub(/r(#*)".*?"\1/m, "").gsub(/"(?:[^"\\]|\\.)*"/m, "\"\"")
 
       # Whether generated `lines` use the variable `name`, outside strings.
-      def mentions?(lines, name) = code_only(Array(lines).join("\n")).match?(/(?<![\w#])#{Regexp.escape(name)}\b/)
+      # `self.name` is a field, not the variable; `..name` is a range.
+      def mentions?(lines, name) = code_only(Array(lines).join("\n")).match?(/(?<![\w#])(?<![^.]\.)#{Regexp.escape(name)}\b/)
+
+      # Functions generated code calls unqualified, which a Rust variable
+      # of the same name would shadow.
+      FUNCTIONS = %w[action error_page error_response errors_json format_date format_time health local_today merge now
+                     parse_query reason sanitize_sql_like today value_json].freeze
+
+      # A parameter's Rust name: its own, unless Rust, the runtime or the
+      # method's other names (`taken`) already mean something by it. `_`
+      # can't be read in Rust, though Ruby reads it.
+      def parameter(name, taken)
+        return "_arg" if name == "_"
+
+        (Translator::KEYWORDS + Translator::UNRAW + FUNCTIONS + taken).include?(name) ? "#{name}_" : name
+      end
     end
   end
 end

@@ -33,11 +33,10 @@ module Rutile
       def type(model, name, at)
         found = entry(model, name) or raise Error, "#{model} has no method #{name}"
         raise Unsupported.at(*at, "calling #{name}, which is also a callback,") if hook?(model, name)
-        # Calling itself needs the return type before the body has one.
+        # Ruby stops runaway recursion with SystemStackError, a 500; a Rust
+        # stack overflow aborts the whole server.
         if found.state == :working
-          return found.type if found.type
-
-          raise Unsupported.at(*at, "#{name} calling itself without a signature declaring what it returns")
+          raise Unsupported.at(*at, "#{name} calling itself, directly or through another method,")
         end
 
         translate(found) unless found.state
@@ -134,10 +133,7 @@ module Rutile
 
       # A parameter's Rust name: its own, unless Rust or the method's other
       # names already mean something by it.
-      def parameter_name(name, var)
-        reserved = Translator::KEYWORDS + Translator::UNRAW + ["ctx", "req", "self", var]
-        reserved.include?(name) ? "#{name}_" : name
-      end
+      def parameter_name(name, var) = Names.parameter(name, ["ctx", "req", "self", var])
 
       # What Rails' own code would call instead of Rutile's calls: a column
       # or association reader, or a method of Active Record's. Nil if none.

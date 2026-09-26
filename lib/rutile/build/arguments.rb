@@ -18,10 +18,14 @@ module Rutile
         # Ruby passes `key: value` to a method without keywords as a Hash.
         unsupported!(node, "passing a hash to #{name}, which takes no keywords") if trailing && signature&.keywords.to_a.empty?
         keywords = trailing ? pairs([args.last], node) : []
+        twice = keywords.map(&:first).tally.find { _2 > 1 }&.first
+        unsupported!(node, "#{name} with the keyword #{twice} twice") if twice
         positional = trailing ? args[0...-1] : args
         written = match_arguments(signature, positional, keywords, node, name)
         codes = in_order(written.map(&:first)) { value(_1) }
         codes = bind == :ctx ? settle(codes, :write) : codes.map { literal_code?(_1) ? _1 : local!(_1) }
+        # Keywords go in the def's order: what can fail runs first, as written.
+        codes = codes.map { impure?(_1) ? local!(_1) : _1 } unless written.map(&:last) == written.map(&:last).sort_by { params.index(_1) }
         given = written.zip(codes).to_h { |(_, param), code| [param.name, convert_argument(code, param, node, name)] }
         params.map { |param| given.fetch(param.name) { convert_argument(expr(param.default), param, node, name) } }
       end
@@ -46,15 +50,20 @@ module Rutile
       end
 
       # An argument as its parameter's type, or refused: a value where it
-      # may be nil is `Some`; a param value where a String is declared must
-      # be one (`to_str`), as the signature promises.
+      # may be nil is `Some`. Ruby doesn't check a signature, so a param
+      # value (maybe nil, maybe a number) is refused where a String is
+      # declared, and so is a Symbol, which no String equals.
       def convert_argument(code, param, node, name)
         want = param.type
+        if code.extra[:symbol] && [T::STR, T.nilable(T::STR)].include?(want)
+          unsupported!(node, "passing a Symbol to #{name}'s #{param.name} (#{describe(want)})")
+        end
+        if code.type == T::VALUE && want == T::STR
+          unsupported!(node, "passing a param value to #{name}'s #{param.name} (str), which Ruby would pass as it is, nil or a number too; to_s makes it a String")
+        end
         return owned(code, want) if code.type == want
         return "Some(#{owned(code, want.inner)})" if want.nilable? && code.type == want.inner
         return "None" if want.nilable? && code.type == T::NIL
-        return "#{code.rust}.to_str()?" if code.type == T::VALUE && want == T::STR
-
         unsupported!(node, "passing #{describe(code.type)} to #{name}'s #{param.name} (#{describe(want)})")
       end
 

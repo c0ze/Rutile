@@ -43,8 +43,15 @@ module Rutile
         Code["#{group(truthy(left, node.left), left, logic: true)} #{operator} #{right_rust}", type, touch(left, right), logic: true]
       end
 
-      # A Float literal as Rust spells it; Ruby's `to_s` of one always has
-      # a `.` or an exponent Rust reads the same.
+      # Ruby makes a Bignum past 64 bits.
+      def integer_literal(node)
+        unsupported!(node, "an Integer literal beyond 64 bits") unless node.value.between?(-2**63, 2**63 - 1)
+
+        Code[node.value.to_s, T::INT]
+      end
+
+      # A Float literal as Rust spells it: Ruby's `to_s` of one always has
+      # a `.` or an exponent, which Rust reads the same.
       def float_literal(node)
         unsupported!(node, "a Float literal too large for a Float") unless node.value.finite?
 
@@ -140,6 +147,9 @@ module Rutile
       end
 
       def equality(left, right, name, node)
+        if left.extra[:symbol] != right.extra[:symbol] && [left, right].all? { [T::STR, T.nilable(T::STR)].include?(_1.type) }
+          unsupported!(node, "#{name} between a String and a Symbol, which Ruby never finds equal,")
+        end
         left, right = settle([left, right], :none)
         l = left.type.nilable? ? left.type.inner : left.type
         r = right.type.nilable? ? right.type.inner : right.type

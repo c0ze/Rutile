@@ -142,7 +142,8 @@ module Rutile
       def loop_variable(node, element)
         name, = block_form(node)
         hint = element.kind == :record ? Names.snake(element.model) : "item"
-        name.nil? || %w[_1 it].include?(name) || [*Translator::KEYWORDS, "ctx", "req", "self", @self_var].include?(name) ? fresh(hint) : name
+        reserved = [*Translator::KEYWORDS, *Names::FUNCTIONS, "ctx", "req", "self", @self_var]
+        name.nil? || %w[_1 it].include?(name) || reserved.include?(name) ? fresh(hint) : name
       end
 
       # The block's body for one element, bound to `var`: [lines, value].
@@ -153,7 +154,9 @@ module Rutile
         in_block(name, code) do
           if symbol
             called = send_to(code, node, symbol, [])
-            tail == :unit ? (@lines << "#{called.rust};") : called
+            next called unless tail == :unit
+
+            @lines << "#{called.rust};" if impure?(called)
           else
             statements = block_statements(node.block, node)
             unsupported!(node, "an empty #{node.name} block") if statements.empty?
