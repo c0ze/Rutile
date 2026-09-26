@@ -8,9 +8,10 @@ Methods with parameters, typed by rbs-inline signatures (`feature/method-signatu
 
 - `#:` and `# @rbs` comments above a def type its parameters and return value, read with the `rbs` gem's parser.
 - Model methods and controller helpers take required, optional and keyword parameters with literal defaults. Calls pass checked, converted arguments in Ruby's order.
-- A declared return type is checked, wraps values in `Some` where it may be nil, allows `return value`, and lets a method call itself.
+- A declared return type is checked, wraps values in `Some` where it may be nil, and allows `return value`.
 - Attribute query methods (`active?`) compile as Rails' `query_attribute`.
 - `examples/store`, a third example app, uses these and passes its 9 integration tests on the Rust build.
+- From the branch's review ([plan](docs/superpowers/plans/2026-09-26-method-signatures.md)): arguments run in Ruby's order around helpers that assign instance variables; recursion, overloads, Symbols passed or returned as Strings, and param values passed as Strings are refused; Float literals compile.
 
 ## 0.5.0
 

@@ -15,7 +15,8 @@ module Rutile
       # The comment lines directly above `line`, nearest last: what
       # annotates the def (or `private def`) that starts there.
       def comments_above(path, line)
-        by_line = comments(path).to_h { [_1.location.start_line, _1.slice] }
+        # A comment after code on its line isn't one above the def.
+        by_line = comments(path).reject(&:trailing?).to_h { [_1.location.start_line, _1.slice] }
         above = []
         above.unshift(by_line[line - above.size - 1]) while by_line.key?(line - above.size - 1)
         above

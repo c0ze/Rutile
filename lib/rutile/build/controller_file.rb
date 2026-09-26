@@ -108,7 +108,7 @@ module Rutile
         translator = translator(path, returns: tail == :value ? declared : nil)
         exception = parameter && Rescues.declare(translator, @uses, node, parameter)
         params = (signature&.params || []).map do |param|
-          rust = (Translator::KEYWORDS + Translator::UNRAW + %w[req ctx self]).include?(param.name) ? "#{param.name}_" : param.name
+          rust = Names.parameter(param.name, %w[req ctx self])
           translator.declare(param.name, rust, param.type)
           @uses.type(param.type)
           [rust, param.type]

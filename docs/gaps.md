@@ -52,7 +52,7 @@ Plan 11 (`docs/superpowers/plans/2026-09-25-model-methods-and-blocks.md`):
 
 Each of these is refused with the file and line rather than compiled wrong. They're the constructs this round met and left for later, roughly in the order a typical Rails app would hit them.
 
-- **Methods with parameters**, on models and in controllers. They need the design's rbs-inline signatures (Types, layer 3); inferring from call sites would be whole-program inference.
+- **Methods that call themselves**, directly or through another. Ruby stops a runaway recursion with SystemStackError; a Rust stack overflow would abort the server. (Methods with parameters compile since 0.6.0, typed by rbs-inline signatures.)
 - **Blocks other than `map` over a relation**: `each`, `select`, `sum`, `find_each`, `map(&:name)`, numbered and `it` parameters, and `map` over a list `map` returned.
 - **Callbacks**: `after_initialize` and `after_find` blocks or methods of the app's own; `saved_change_to_x?` (the runtime keeps the changes a save will make, not those it made); callback conditions naming an app method.
 - **Normalizers** on columns other than strings, with `apply_to_nil`, more than one on an attribute, with `it` or numbered parameters, or ones that could fail.
@@ -64,4 +64,5 @@ Each of these is refused with the file and line rather than compiled wrong. They
 ## Runtime differences only verify can catch
 
 - The tracker's tests exercise the JSON formats of dates and times, error message order, `ILIKE` against Rails' SQL, token length and email normalization, and they pass. Other apps will exercise more.
+- `record.update!(attributes)` on a nil record reads the record before the attributes, so with `@product` nil and the params missing, Rust answers 500 (NoMethodError) where Rails answers 400 (ParameterMissing). Both are errors; only the status differs.
 - Where RustOnRails doesn't copy Rails, it fails rather than guess: a date string in a format only `Date._parse` reads is a cast error (a 500), not a date or nil. One case stays silent: after params assign a numeric column a value that isn't an integer ("1.5"), app code writing back exactly its cast (1) leaves numericality checking "1.5", where Rails checks 1.

@@ -44,7 +44,7 @@ module Rutile
         @depth = 0
         @locals = {}
         @writes = Hash.new(0)
-        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS].compact)
+        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS, *Names::FUNCTIONS].compact)
         @renames = {}
         @params = Set.new
         @lines = []
@@ -102,7 +102,7 @@ module Rutile
           name = node.name.to_s
           @writes[name] += 1
           # One that would shadow the record, the Ctx or a keyword gets another name.
-          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS].include?(name)
+          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS, *Names::FUNCTIONS].include?(name)
           reserved ? (@renames[name] ||= fresh(name)) : @taken << name
         when Prism::RequiredParameterNode, Prism::LocalVariableTargetNode
           @taken << node.name.to_s
@@ -115,6 +115,8 @@ module Rutile
         return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
 
         code = @returns && tail == :value ? returned(value(node), node) : expr(node)
+        # A method's String result compares as one; a Symbol wouldn't.
+        unsupported!(node, "returning a Symbol") if tail == :value && code.extra[:symbol]
         if tail == :response
           raise Unsupported.at(@path, node, "an action that doesn't end in render or head") unless code.type == T::RESPONSE
 
@@ -135,8 +137,9 @@ module Rutile
         else
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
-          # A plain name (the record `create!` returns) as a statement does nothing.
-          @lines << "#{code.rust};" unless code.rust.match?(/\A[a-z_][a-z0-9_]*\z/)
+          # A value that can't fail or write (`nil`, `stock + 1`, the record
+          # `create!` returns) does nothing as a statement; Rust would warn.
+          @lines << "#{code.rust};" if impure?(code)
         end
       end
 
@@ -153,8 +156,9 @@ module Rutile
         else
           # A local assigned again holds a String, whatever literal it starts from.
           again = @writes[name] > 1
+          unsupported!(node, "a Symbol in #{name}, which is assigned again") if again && code.extra[:symbol]
           @lines << "let #{"mut " if again}#{rust} = #{owned(code, again ? code.type : nil)};"
-          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal]]
+          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal], symbol: code.extra[:symbol]]
         end
       end
 
@@ -195,8 +199,9 @@ module Rutile
         case node
         when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::InterpolatedStringNode then interpolation(node)
-        when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
-        when Prism::IntegerNode then Code[node.value.to_s, T::INT]
+        when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true, symbol: true]
+        when Prism::IntegerNode then integer_literal(node)
+        when Prism::FloatNode then float_literal(node)
         when Prism::NilNode then Code["None", T::NIL]
         when Prism::AndNode, Prism::OrNode then logic(node)
         when Prism::IfNode then ternary(node)

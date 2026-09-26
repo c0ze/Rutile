@@ -34,7 +34,11 @@ module Rutile
       # The signature of `node` (a DefNode) in `path`, or nil when it has
       # none. Unsupported for a signature Rutile can't use.
       def of(app, path, node)
-        text = annotation(app.source.comments_above(path, node.location.start_line))
+        text = begin
+          annotation(app.source.comments_above(path, node.location.start_line))
+        rescue Overloaded
+          raise Unsupported.at(path, node, "a method with more than one signature (an overload)")
+        end
         return nil unless text
 
         method_type, named, returns = text
@@ -49,27 +53,33 @@ module Rutile
       end
 
       # [method type string, { name => type string }, return type string]
-      # from the comment lines, or nil when none is an annotation.
+      # from the comment lines, or nil when none is an annotation. A second
+      # method type is an overload, which one Rust function can't be.
       def annotation(lines)
-        method_type = nil
+        method_types = []
         named = {}
         returns = nil
         lines.each do |line|
           body = line.sub(/\A#/, "")
           if body.start_with?(":")
-            method_type = body.delete_prefix(":").strip
-          elsif body.start_with?("|") && method_type
-            method_type += " #{body.delete_prefix("|").strip}"
+            method_types << body.delete_prefix(":").strip
+          elsif body.match?(/\A\s+\|/) && !method_types.empty?
+            method_types << body.sub(/\A\s+\|/, "").strip
           elsif (rbs = body[/\A\s*@rbs\s+(.*)\z/, 1])
             rbs = rbs.sub(/\s+--\s.*\z/, "").strip
-            if rbs.start_with?("(") then method_type = rbs
+            if rbs.start_with?("(") then method_types << rbs
             elsif (m = rbs.match(/\Areturn:\s*(.+)\z/)) then returns = m[1]
             elsif (m = rbs.match(/\A(\w+):\s*(.+)\z/)) then named[m[1]] = m[2]
             end
           end
         end
-        method_type || !named.empty? || returns ? [method_type, named, returns] : nil
+        raise Overloaded if method_types.size > 1
+
+        method_types.first || !named.empty? || returns ? [method_types.first, named, returns] : nil
       end
+
+      # More than one method type above a def.
+      class Overloaded < StandardError; end
 
       # The def's parameters as [name, kind, default node]; splats and
       # blocks are refused.
@@ -79,14 +89,20 @@ module Rutile
           raise Unsupported.at(path, node, "a method with a splat or a block parameter")
         end
 
-        list.requireds.map { [_1.name.to_s, :req, nil] } + list.optionals.map { [_1.name.to_s, :opt, _1.value] } +
-          list.keywords.map do |keyword|
-            keyword.is_a?(Prism::OptionalKeywordParameterNode) ? [keyword.name.to_s, :keyopt, keyword.value] : [keyword.name.to_s, :key, nil]
-          end
+        raise Unsupported.at(path, node, "a destructuring parameter") unless list.requireds.all?(Prism::RequiredParameterNode)
+
+        found = list.requireds.map { [_1.name.to_s, :req, nil] } + list.optionals.map { [_1.name.to_s, :opt, _1.value] } +
+                list.keywords.map do |keyword|
+                  keyword.is_a?(Prism::OptionalKeywordParameterNode) ? [keyword.name.to_s, :keyopt, keyword.value] : [keyword.name.to_s, :key, nil]
+                end
+        twice = found.map(&:first).tally.find { _2 > 1 }&.first
+        raise Unsupported.at(path, node, "two parameters named #{twice}") if twice
+
+        found
       end
 
       def from_method_type(app, path, node, params, text)
-        function = parse(path, node) { RBS::Parser.parse_method_type(text) }.type
+        function = parse(path, node) { RBS::Parser.parse_method_type(text, require_eof: true) }.type
         unless function.is_a?(RBS::Types::Function) && function.rest_positionals.nil? && function.rest_keywords.nil? &&
                function.trailing_positionals.empty?
           raise Unsupported.at(path, node, "the signature #{text}")
@@ -115,9 +131,9 @@ module Rutile
 
         typed = params.map do |name, kind, default|
           text = named[name] or raise Unsupported.at(path, node, "a signature without the parameter #{name}")
-          Param.new(name:, type: type(app, path, node, parse(path, node) { RBS::Parser.parse_type(text) }), kind:, default:)
+          Param.new(name:, type: type(app, path, node, parse(path, node) { RBS::Parser.parse_type(text, require_eof: true) }), kind:, default:)
         end
-        declared = returns && returns(app, path, node, parse(path, node) { RBS::Parser.parse_type(returns) })
+        declared = returns && returns(app, path, node, parse(path, node) { RBS::Parser.parse_type(returns, require_eof: true) })
         Signature.new(params: typed, returns: declared)
       end
 
@@ -174,7 +190,7 @@ module Rutile
         want = param.type.nilable? ? param.type.inner : param.type
         fits = case default
                when Prism::NilNode then param.type.nilable?
-               when Prism::IntegerNode then want == T::INT
+               when Prism::IntegerNode then want == T::INT && default.value.between?(-2**63, 2**63 - 1)
                when Prism::FloatNode then want == T::FLOAT
                when Prism::StringNode then want == T::STR
                when Prism::TrueNode, Prism::FalseNode then want == T::BOOL

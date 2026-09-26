@@ -7,9 +7,10 @@ module Rutile
       private
 
       # `@project.archive!`, `task.overdue?`: `Model::method(ctx, record)`.
-      # Ruby lets only the record itself call a private one.
+      # Ruby lets only the record itself call a private one, and never
+      # through public_send.
       def model_method(receiver, node, model, name, args)
-        own = @env == :model && model == @model && receiver.rust == @self_var
+        own = @env == :model && model == @model && receiver.rust == @self_var && node.name != :public_send
         if @app.model_methods.private?(model, name) && !own
           unsupported!(node, "the private method #{name} from outside #{model}")
         end

@@ -243,14 +243,16 @@ module Rutile
         Code["#{function}()", T::DATE]
       end
 
-      def on_str(receiver, _node, name, args)
+      def on_str(receiver, node, name, args)
         return nil unless args.empty?
+        # A Symbol's `to_s` is a String; its `downcase` is another Symbol.
+        return Code[receiver.rust, T::STR, receiver.ctx, **receiver.extra.except(:symbol)] if name == "to_s"
+        unsupported!(node, "#{name} on a Symbol") if receiver.extra[:symbol]
 
         case name
         when "strip", "downcase", "upcase"
           @uses.rt("RubyString")
           Code["#{receiver.rust}.#{name}()", T::STR, receiver.ctx, hint: receiver.hint]
-        when "to_s" then receiver
         when "present?", "blank?"
           @uses.rt("Blank")
           Code["#{receiver.rust}.#{Names.method(name)}()", T::BOOL, receiver.ctx]
