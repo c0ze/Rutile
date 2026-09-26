@@ -25,6 +25,7 @@ module Rutile
 
           type = @controller.helper(name, node) or return nil
           unsupported!(node, "calling #{name} with arguments") unless args.empty?
+          unsupported!(node, "calling #{name}, which renders, from another method") if @controller.halting?(name)
           Code["self.#{Names.method(name)}(req)?", type, :write, hint: name.end_with?("_params") ? "attributes" : name]
         end
       end

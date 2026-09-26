@@ -66,6 +66,11 @@ module Rutile
 
       def ivar_type(name) = @ivars[name] || (@filter_failed ? raise(Skipped, name) : nil)
 
+      # A method that renders or heads. As a before_action it returns the
+      # response that halts the chain; called from another method, that
+      # response would be dropped and the caller would carry on.
+      def halting?(name) = renders?(definition(name)&.first)
+
       # A method of this controller that isn't an action, translated the
       # first time something calls it. A filter returns nothing; a helper
       # returns its last value; a rescue handler returns a response, and

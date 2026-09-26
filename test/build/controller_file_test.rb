@@ -132,6 +132,18 @@ class ControllerFileTest < Minitest::Test
                          "Ok(Some(Response::head(403))) } else { Ok(None) }"
   end
 
+  # Called from an action, a filter's head would be dropped and the action
+  # would carry on: an authorization check that doesn't stop anything.
+  def test_calling_a_filter_that_renders_is_refused
+    app = scratch_app({ "app/controllers/posts_controller.rb" =>
+                          lambda do |ruby|
+                            ruby.sub("@post = Post.find(params[:id])", "@post = Post.find(params[:id])\n    head :forbidden if @post.draft?")
+                                .sub("@post.destroy!", "set_post\n    @post.destroy!")
+                          end })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ControllerFile.new(app, "PostsController").to_rust }
+    assert_match(/posts_controller.rb:\d+: calling set_post, which renders, from another method isn't supported yet\z/, error.message)
+  end
+
   # Rails ANDs the action lists (`only:` plus a skip_before_action `except:`).
   def test_several_action_conditions_are_all_required
     both = app_with do |m|
