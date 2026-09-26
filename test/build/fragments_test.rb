@@ -47,7 +47,7 @@ class FragmentsTest < Minitest::Test
     refused("a SQL fragment with $") { translate('found = Task.where("a = $1")') }
     refused("sanitize_sql_like with int") { translate("found = Task.sanitize_sql_like(1)") }
     refused("passing int to scope :search's query (str)") { translate("found = Task.search(1)") }
-    refused("interpolating int or nil") { translate('found = Task.where("title = ?", "#{estimate}")') }
+    refused("interpolating date or nil") { translate('found = Task.where("title = ?", "#{due_on}")') }
   end
 
   # `.into()` binds tighter than `-`, so an arithmetic bind keeps its parentheses.

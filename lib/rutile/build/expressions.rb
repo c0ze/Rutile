@@ -4,9 +4,11 @@ module Rutile
     module Expressions
       COMPARE = %w[== != < <= > >=].freeze
       ORDERED = %i[int float str time date].freeze
-      ARITHMETIC = %w[+ - *].freeze
+      ARITHMETIC = %w[+ - * / %].freeze
       # How tightly Rust binds each operator.
-      BINDS = { "+" => 1, "-" => 1, "*" => 2 }.freeze
+      BINDS = { "+" => 1, "-" => 1, "*" => 2, "/" => 2, "%" => 2 }.freeze
+      # Ruby's floor division and modulo, which Rust's operators aren't.
+      FLOORED = { ["/", :int] => "div_integers", ["%", :int] => "mod_integers", ["%", :float] => "mod_floats" }.freeze
 
       private
 
@@ -66,7 +68,9 @@ module Rutile
       # statements run.
       def compare(node, name, arg)
         left, right = in_order([node.receiver, arg]) { value(_1) }
-        rust = if [left, right].any? { _1.type == T::NIL }
+        rust = if [left, right].any? { _1.type == T::VALUE }
+                 dynamic_compare(node, name, left, right)
+               elsif [left, right].any? { _1.type == T::NIL }
                  nil_compare(left, right, name, node)
                elsif %w[== !=].include?(name)
                  equality(left, right, name, node)
@@ -92,16 +96,31 @@ module Rutile
         "#{value.rust}.#{name == "==" ? "is_none" : "is_some"}()"
       end
 
-      # `a + b`, `a - b`, `a * b` on two Integers or two Floats. Ruby
+      # `a + b`, `a - b`, `a * b`, `a / b`, `a % b` on Integers and Floats;
+      # an Integer with a Float is a Float, as Ruby coerces it. Ruby
       # promotes an overflowing Integer to a Bignum; generated crates build
       # with overflow-checks, so Rust panics (a 500) instead of wrapping.
-      # A nil operand raises, as it does in Ruby.
-      def arithmetic(node, name, arg)
-        left, right = in_order([node.receiver, arg]) { value(_1) }.map { unwrap(_1, name) }
-        unless left.type == right.type && %i[int float].include?(left.type.kind)
-          unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}")
+      # `/` and `%` round toward negative infinity and raise on zero, as
+      # Ruby's do. A nil operand raises, as it does in Ruby; a Value
+      # dispatches at run time.
+      def arithmetic(node, name, arg) = combine(node, name, *in_order([node.receiver, arg]) { value(_1) })
+
+      def combine(node, name, left, right)
+        return dynamic_arithmetic(node, name, left, right) if [left, right].any? { _1.type == T::VALUE }
+
+        left, right = [left, right].map { unwrap(_1, name) }
+        kinds = [left.type.kind, right.type.kind]
+        if name == "+" && kinds == %i[str str]
+          left, right = settle([left, right], :none)
+          return Code["format!(\"{}{}\", #{left.rust}, #{right.rust})", T::STR, touch(left, right)]
         end
+        unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}") unless (kinds - %i[int float]).empty?
+        left, right = [left, right].map { kinds.include?(:float) && _1.type == T::INT ? Code["(#{_1.rust} as f64)", T::FLOAT, _1.ctx] : _1 }
         left, right = settle([left, right], :none)
+        if (function = FLOORED[[name, left.type.kind]])
+          @uses.rt(function)
+          return Code["#{function}(#{left.rust}, #{right.rust})?", left.type, touch(left, right)]
+        end
         rust = "#{operand(left, name, false)} #{name} #{operand(right, name, true)}"
         Code[rust, left.type, touch(left, right), arith: name]
       end
@@ -139,9 +158,19 @@ module Rutile
         embedded = node.parts.grep(Prism::EmbeddedStatementsNode)
         codes = in_order(embedded) { value(only(_1.statements&.body || [], _1)) }
         codes.zip(embedded).each do |code, part|
-          unsupported!(part, "interpolating #{describe(code.type)}") unless [T::STR, T::INT, T::BOOL].include?(code.type)
+          unless [T::STR, T::INT, T::BOOL, T::VALUE].include?(code.type) || [T::STR, T::INT].map { T.nilable(_1) }.include?(code.type)
+            unsupported!(part, "interpolating #{describe(code.type)}")
+          end
         end
-        codes = settle(codes, :none)
+        # nil interpolates as "", as its to_s is.
+        codes = settle(codes, :none).map do |code|
+          case code.type
+          when T::VALUE then Code["#{code.rust}.to_s()", T::STR, code.ctx]
+          when T.nilable(T::STR) then Code["#{code.rust}.unwrap_or_default()", T::STR, code.ctx]
+          when T.nilable(T::INT) then Code["#{code.rust}.map(|value| value.to_string()).unwrap_or_default()", T::STR, code.ctx]
+          else code
+          end
+        end
         template = node.parts.map { _1.is_a?(Prism::StringNode) ? _1.unescaped.gsub(/[{}]/) { |b| b * 2 } : "{}" }.join
         Code["format!(#{Names.str(template)}#{codes.map { ", #{_1.rust}" }.join})", T::STR, touch(*codes)]
       end
@@ -193,6 +222,9 @@ module Rutile
         return [T.nilable(a.type), "Some(#{owned(a, a.type)})", "None"] if b.type == T::NIL && !a.type.nilable?
         return [a.type, owned(a), "None"] if b.type == T::NIL
         return [b.type, "None", owned(b)] if a.type == T::NIL
+        return [a.type, owned(a), "Some(#{owned(b, b.type)})"] if a.type == T.nilable(b.type)
+        return [b.type, "Some(#{owned(a, a.type)})", owned(b)] if b.type == T.nilable(a.type)
+        return dynamic_unify(a, b, node) if scalar?(a.type) && scalar?(b.type)
 
         unsupported!(node, "an if whose branches have different types")
       end

@@ -1,5 +1,5 @@
 class ProductsController < ApplicationController
-  before_action :set_product, only: %i[show update restock quote]
+  before_action :set_product, only: %i[show update restock quote availability]
 
   def index
     render json: Product.available.order(:name)
@@ -66,6 +66,17 @@ class ProductsController < ApplicationController
       end
     end
     render json: { deactivated: deactivated, active: Product.where(active: true).order(:name).pluck(:name) }
+  end
+
+  # Whatever the client sent, doubled the way Ruby doubles it: 21 is 42,
+  # "ab" is "abab".
+  def double
+    value = params.fetch(:value, 1)
+    render json: { value: value, doubled: value * 2, half: value.to_i / 2, text: "got #{value}" }
+  end
+
+  def availability
+    render json: { id: @product.id, availability: @product.availability, tagged: @product.tag_with(params[:tag]) }
   end
 
   def quote

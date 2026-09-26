@@ -124,9 +124,10 @@ class IterationTest < Minitest::Test
   def test_operator_assignment
     assert_rust_includes action("x = 1\nx *= 3 + 4\nrender json: { x: x }"), "let mut x = 1; x = x * (3 + 4);"
     assert_rust_includes action("x = 1.5\nx -= 0.5\nrender json: { x: x }"), "let mut x = 1.5; x = x - 0.5;"
-    refused("2: += between int and float", "x = 1\nx += 2.5\nhead :ok")
+    # An Integer local given a Float is a Value from the start.
+    assert_rust_includes action("x = 1\nx += 2.5\nrender json: { x: x }"), "let mut x = Value::from(1); x = x.add(&Value::from(2.5))?;"
     refused("1: x += before it's assigned", "x += 2\nhead :ok")
-    refused("2: /=", "x = 1\nx /= 2\nhead :ok")
+    assert_rust_includes action("x = 7\nx /= 2\nrender json: { x: x }"), "x = div_integers(x, 2)?;"
   end
 
   # A block needn't name its element.

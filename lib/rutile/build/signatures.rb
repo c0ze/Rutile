@@ -155,11 +155,15 @@ module Rutile
         when RBS::Types::Bases::Bool then T::BOOL
         when RBS::Types::Optional
           inner = type(app, path, node, rbs.type)
+          return inner if inner == T::VALUE
           raise Unsupported.at(path, node, "the type #{rbs}") if inner.nilable?
 
           T.nilable(inner)
         when RBS::Types::ClassInstance then class_type(app, path, node, rbs)
-        when RBS::Types::Bases::Any then raise Unsupported.at(path, node, "the type untyped, which needs the Value fallback,")
+        # A scalar whose class is known only at run time: the Value fallback.
+        when RBS::Types::Bases::Any
+          app.fallback(path, node, "untyped in the signature of #{node.name} falls back to Value")
+          T::VALUE
         else raise Unsupported.at(path, node, "the type #{rbs}")
         end
       end
@@ -189,11 +193,11 @@ module Rutile
         default = param.default or return
         want = param.type.nilable? ? param.type.inner : param.type
         fits = case default
-               when Prism::NilNode then param.type.nilable?
-               when Prism::IntegerNode then want == T::INT && default.value.between?(-2**63, 2**63 - 1)
-               when Prism::FloatNode then want == T::FLOAT
-               when Prism::StringNode then want == T::STR
-               when Prism::TrueNode, Prism::FalseNode then want == T::BOOL
+               when Prism::NilNode then param.type.nilable? || want == T::VALUE
+               when Prism::IntegerNode then [T::INT, T::VALUE].include?(want) && default.value.between?(-2**63, 2**63 - 1)
+               when Prism::FloatNode then [T::FLOAT, T::VALUE].include?(want)
+               when Prism::StringNode then [T::STR, T::VALUE].include?(want)
+               when Prism::TrueNode, Prism::FalseNode then [T::BOOL, T::VALUE].include?(want)
                else false
                end
         raise Unsupported.at(path, node, "the default of #{param.name}, which isn't a literal of its type,") unless fits

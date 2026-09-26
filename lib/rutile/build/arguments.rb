@@ -55,13 +55,17 @@ module Rutile
       # declared, and so is a Symbol, which no String equals.
       def convert_argument(code, param, node, name)
         want = param.type
-        if code.extra[:symbol] && [T::STR, T.nilable(T::STR)].include?(want)
+        if code.extra[:symbol] && [T::STR, T.nilable(T::STR), T::VALUE].include?(want)
           unsupported!(node, "passing a Symbol to #{name}'s #{param.name} (#{describe(want)})")
         end
         if code.type == T::VALUE && want == T::STR
           unsupported!(node, "passing a param value to #{name}'s #{param.name} (str), which Ruby would pass as it is, nil or a number too; to_s makes it a String")
         end
         return owned(code, want) if code.type == want
+        if want == T::VALUE
+          return to_value(code)&.rust || unsupported!(node, "passing #{describe(code.type)} to #{name}'s #{param.name} (untyped), " \
+                                                            "which a Value can't hold")
+        end
         return "Some(#{owned(code, want.inner)})" if want.nilable? && code.type == want.inner
         return "None" if want.nilable? && code.type == T::NIL
         unsupported!(node, "passing #{describe(code.type)} to #{name}'s #{param.name} (#{describe(want)})")

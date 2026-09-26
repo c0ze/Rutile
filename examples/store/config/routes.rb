@@ -4,10 +4,12 @@ Rails.application.routes.draw do
       get :stats
       get :low_stock
       post :deactivate_sold_out
+      post :double
     end
     member do
       post :restock
       get :quote
+      get :availability
     end
   end
   resources :orders, only: %i[show create] do

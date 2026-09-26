@@ -100,6 +100,13 @@ module Rutile
         other.constants.all? { |name, item| constant(name, item) }
       end
 
+      # What's collected so far, to go back to with `restore`.
+      def snapshot = [@std, @rt, @models, @constants, @lines].map(&:dup)
+
+      def restore(snapshot)
+        @std, @rt, @models, @constants, @lines = snapshot.map(&:dup)
+      end
+
       # Whatever spelling `type` in a signature needs.
       def type(type)
         case type.kind

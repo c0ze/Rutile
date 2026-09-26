@@ -16,6 +16,20 @@ class Product < ApplicationRecord
     price_cents * quantity
   end
 
+  # The stock, or why there's none: an Integer or a String.
+  def availability
+    return "inactive" unless active?
+    return "sold out" if stock == 0
+
+    stock
+  end
+
+  # The name with whatever tag a client sent.
+  #: (untyped) -> untyped
+  def tag_with(tag)
+    tag.nil? ? name : "#{name} (#{tag})"
+  end
+
   #: (Integer) -> void
   def restock!(amount)
     update!(stock: stock + amount)

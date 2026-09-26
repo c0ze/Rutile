@@ -9,6 +9,7 @@ module Rutile
       def truthy(code, node)
         type = code.type
         return code.rust if type == T::BOOL || type == T::COND
+        return "#{code.rust}.is_truthy()" if type == T::VALUE
         return "false" if type == T::NIL
         unsupported!(node, "a condition on #{describe(type)}") unless type.nilable?
         return "#{code.rust}.is_some()" unless type.inner == T::BOOL

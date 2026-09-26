@@ -62,8 +62,9 @@ namespace :example do
     require_relative "../lib/rutile"
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
-    Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples", EXAMPLE), runtime: rust, name: EXAMPLE,
-                      env: "test", vars: clean)
+    fallbacks = Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples", EXAMPLE), runtime: rust, name: EXAMPLE,
+                                  env: "test", vars: clean)
+    puts fallbacks
     puts "generated #{File.join(rust, "examples", EXAMPLE, "src")}"
   end
 

@@ -14,9 +14,12 @@ module Rutile
     end
 
     # Introspects the app (unless handed a manifest) and writes the crate.
+    # Returns where it fell back to Value, `path:line: what` each.
     def self.run(app_dir:, out:, runtime:, name: File.basename(app_dir), manifest: nil, env: "development", vars: {})
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
-      Crate.new(App.new(app_dir, JSON.parse(File.read(manifest))), out, name:, runtime:).write
+      app = App.new(app_dir, JSON.parse(File.read(manifest)))
+      Crate.new(app, out, name:, runtime:).write
+      app.fallbacks
     end
   end
 end
@@ -40,6 +43,7 @@ require_relative "build/iteration"
 require_relative "build/lists"
 require_relative "build/calculations"
 require_relative "build/transactions"
+require_relative "build/dynamic"
 require_relative "build/expressions"
 require_relative "build/constants"
 require_relative "build/queries"

@@ -62,6 +62,9 @@ module Rutile
         when :record then render_record(code, code.type.model, nil, node)
         when :relation then render_relation(code, code.type.model, nil, node)
         when :list then list_json(code, node)
+        when :value
+          @uses.rt("value_json")
+          Code["value_json(#{owned(code)})", T::JSON, code.ctx]
         when :errors
           @uses.rt("errors_json")
           Code["errors_json(#{code.rust})", T::JSON, :read]
@@ -194,6 +197,17 @@ module Rutile
           "Value::Nil"
         else unsupported!(at, "a fetch default that isn't a literal")
         end
+      end
+
+      def ivar(node) = ivar_named(node.name.to_s.delete_prefix("@"), node)
+
+      # `@current_user`, or `current_user` through an attr_reader.
+      def ivar_named(name, node)
+        unsupported!(node, "instance variables here") unless @env == :controller
+        type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
+        # A String field is cloned: the controller is borrowed, not owned.
+        field = T.nilable(type).copy? ? "self.#{name}" : "self.#{name}.clone()"
+        Code[field, T.nilable(type), hint: name]
       end
 
       # A param value. `blank?` is Value's own; `present?` comes from Blank.

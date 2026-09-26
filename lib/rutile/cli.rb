@@ -76,10 +76,11 @@ module Rutile
       return usage unless options[:out] && options[:runtime]
 
       app_dir = File.expand_path(@argv.shift || ".")
-      Build.run(app_dir:, out: File.expand_path(options[:out]), runtime: File.expand_path(options[:runtime]),
-                name: options[:name] || File.basename(app_dir), env: options[:env],
-                manifest: options[:manifest] && File.expand_path(options[:manifest]))
-      @out.puts "wrote #{options[:out]}"
+      fallbacks = Build.run(app_dir:, out: File.expand_path(options[:out]), runtime: File.expand_path(options[:runtime]),
+                            name: options[:name] || File.basename(app_dir), env: options[:env],
+                            manifest: options[:manifest] && File.expand_path(options[:manifest]))
+      @out.puts fallbacks
+      @out.puts "wrote #{options[:out]}#{" (#{fallbacks.size} Value fallback#{"s" unless fallbacks.size == 1})" unless fallbacks.empty?}"
       0
     rescue OptionParser::ParseError
       usage

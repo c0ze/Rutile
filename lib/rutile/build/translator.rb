@@ -28,6 +28,7 @@ module Rutile
       include Expressions
       include Constants
       include Queries
+      include Dynamic
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
@@ -68,7 +69,7 @@ module Rutile
         unsupported!(node, "rescue or ensure around a whole body") if node && !node.is_a?(Prism::StatementsNode)
         @mode = tail
         reserve(node) if node
-        block(node ? node.body : [], tail)
+        retyped { block(node ? node.body : [], tail) }
       end
 
       private
@@ -155,10 +156,10 @@ module Rutile
         name = node.name.to_s
         unsupported!(node, "assigning to the parameter #{name}") if @params.include?(name)
         rust = @renames.fetch(name, name)
-        code = value(node.value)
-        unsupported!(node, "a local assigned nil") if code.type == T::NIL
+        code = local_value(name, value(node.value))
+        retype!(name, code, code, node) if code.type == T::NIL
         if (known = @locals[name])
-          raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
+          retype!(name, known, code, node) unless known.type == code.type
 
           @lines << "#{rust} = #{owned(code, known.type)};"
         else
@@ -225,17 +226,6 @@ module Rutile
         when Prism::CallNode then call(node)
         else unsupported!(node, node.type.to_s.delete_suffix("_node").tr("_", " "))
         end
-      end
-
-      def ivar(node) = ivar_named(node.name.to_s.delete_prefix("@"), node)
-
-      # `@current_user`, or `current_user` through an attr_reader.
-      def ivar_named(name, node)
-        unsupported!(node, "instance variables here") unless @env == :controller
-        type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
-        # A String field is cloned: the controller is borrowed, not owned.
-        field = T.nilable(type).copy? ? "self.#{name}" : "self.#{name}.clone()"
-        Code[field, T.nilable(type), hint: name]
       end
 
       def self_code(node)

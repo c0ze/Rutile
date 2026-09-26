@@ -97,7 +97,7 @@ class SignaturesTest < Minitest::Test
     { "  def label(prefix)\n    name\n  end\n" => "label, a model method with parameters and no rbs-inline signature",
       "  #: (String, Integer) -> String\n  def label(prefix)\n    name\n  end\n" =>
         "a signature that doesn't match the def's parameters ((String, Integer) -> String)",
-      "  #: (untyped) -> String\n  def label(prefix)\n    prefix\n  end\n" => "the type untyped, which needs the Value fallback,",
+      "  #: (untyped) -> String\n  def label(prefix)\n    prefix\n  end\n" => "returning value where the signature says str",
       "  #: (Symbol) -> String\n  def label(prefix)\n    name\n  end\n" => "the type Symbol",
       "  #: (*String) -> String\n  def label(*parts)\n    name\n  end\n" => "a method with a splat or a block parameter",
       "  #: (?Integer) -> Integer\n  def label(n = stock)\n    n\n  end\n" => "the default of n, which isn't a literal of its type,",
