@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rutile (0.5.0)
+    rutile (0.6.0)
       rbs (>= 3.8)
 
 GEM

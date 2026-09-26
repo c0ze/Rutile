@@ -2,6 +2,16 @@
 
 Rutile and RustOnRails share version numbers; each minor version is one milestone of [docs/roadmap.md](docs/roadmap.md).
 
+## 0.6.0
+
+Methods with parameters, typed by rbs-inline signatures (`feature/method-signatures`).
+
+- `#:` and `# @rbs` comments above a def type its parameters and return value, read with the `rbs` gem's parser.
+- Model methods and controller helpers take required, optional and keyword parameters with literal defaults. Calls pass checked, converted arguments in Ruby's order.
+- A declared return type is checked, wraps values in `Some` where it may be nil, allows `return value`, and lets a method call itself.
+- Attribute query methods (`active?`) compile as Rails' `query_attribute`.
+- `examples/store`, a third example app, uses these and passes its 9 integration tests on the Rust build.
+
 ## 0.5.0
 
 The first tagged version: everything through plan 11.

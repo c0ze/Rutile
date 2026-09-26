@@ -65,7 +65,7 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 
 `rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` only when it's missing, so a crate's own tests and dependencies survive a rebuild. The example crate lives at `RustOnRails/examples/blog`; its tests are hand-written.
 
-Not built yet: the `Value` fallback and rbs-inline signatures (neither example needs them; code that would is reported as unsupported), so methods and helpers with parameters are refused; blocks other than `map`.
+Not built yet: the `Value` fallback (code that would need it is reported as unsupported), and blocks other than `map`.
 
 ### 4. Verify
 
@@ -84,6 +84,8 @@ Four layers, cheapest first.
 1. **Schema.** Column types and nullability give every model attribute a type: `title: String`, `published_at: Option<DateTime>`. Associations give `post.comments: Relation<Comment>` and `comment.post: Handle<Post>`. In a typical Rails app this covers most of the values in flight.
 2. **Local inference.** Within a method, variable types come from assignments and calls. No whole-program inference; Crystal shows how expensive that gets.
 3. **Signatures.** Method boundaries use rbs-inline comments (`#: (Integer) -> Post?` on the line above `def`). They are comments, so the code stays plain Ruby. `rbs-trace` can write a first draft by recording real types while the test suite runs.
+
+   Built in 0.6.0. Rutile reads `#:` (with `#|` continuations), `# @rbs (...) -> ...`, and `# @rbs name: Type` / `# @rbs return: Type`, using the `rbs` gem's parser. A method with parameters needs one. The types it maps are `Integer`, `Float`, `String`, `bool`, `Time`, `Date`, the app's models, `T?`, `ActiveRecord::Relation[Model]` (or `Model::ActiveRecord_Relation`), `Array[T]` and `void`. `untyped` waits for the `Value` fallback. Parameters may be required, optional or keywords, with literal defaults. A call's arguments run in Ruby's order, are matched to the parameters and converted to each one's type, or refused: a param value passes where a `String` is declared only as a String (`to_str`), as the signature promises. A declared return type is checked against the body. A value where it may be nil becomes `Some`, `return value` works, and the method may call itself.
 4. **`Value` fallback.** Anything still unknown becomes `rustonrails::Value`, an enum mirroring Ruby's value types with dynamic dispatch. It is slow but correct. `rutile build` reports which methods fell back, so signatures go where the speed matters.
 
 ### Ruby semantics that need care

@@ -20,7 +20,7 @@ Against the design:
 
 | Version | Branch | Milestone | Done when |
 |---|---|---|---|
-| 0.6.0 | `feature/method-signatures` | Methods with parameters, typed by rbs-inline comments (`#: (Integer) -> Post?` above a `def`) | Model methods and controller helpers with typed parameters compile and are called with checked arguments; a missing or wrong signature is refused with its location |
+| 0.6.0 (done) | `feature/method-signatures` | Methods with parameters, typed by rbs-inline comments (`#: (Integer) -> Post?` above a `def`) | Model methods and controller helpers with typed parameters compile and are called with checked arguments; a missing or wrong signature is refused with its location |
 | 0.7.0 | `feature/everyday-ruby` | `each`, `select`, `sum`, `find_each`, `map(&:name)`, aggregates (`count`, `sum`, `minimum`, `maximum`, `exists?`), and `transaction` blocks in app code | Each compiles to what Rails runs (the same SQL for aggregates, batches of 1000 for `find_each`, a rollback on an exception) |
 | 0.8.0 | `feature/value-fallback` | The dynamic `Value` fallback for values no static type reaches, with a report of where it was used | Code that only fails to type today compiles to `Value` operations with Ruby's semantics, and `rutile build` lists each fallback |
 | 0.9.0 | `feature/tooling` | `rutile verify`, a deployable binary and container image, and the subset rules as a RuboCop plugin | An app goes from `rutile check` to a running container with `rutile` commands alone, and RuboCop flags the subset in editors |
