@@ -32,6 +32,16 @@ class RoutesFileTest < Minitest::Test
     assert_equal "config/routes.rb: GET /users/:id(.:format) users#show: requirements isn't supported yet", error.message
   end
 
+  # `match "*path", to: "errors#missing", via: :all` has the verb "", which
+  # used to split into no routes at all, silently.
+  def test_a_route_for_every_verb_is_refused
+    catch_all = app_with do |m|
+      m["routes"] << m["routes"][2].merge("verb" => "", "path" => "/*path(.:format)")
+    end
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::RoutesFile.new(catch_all).to_rust }
+    assert_equal "config/routes.rb:  /*path(.:format) users#show: via: :all isn't supported yet", error.message
+  end
+
   def test_a_route_without_a_controller_is_refused
     redirect = app_with do |m|
       m["routes"] << { "verb" => "GET", "path" => "/old(.:format)", "controller" => nil, "action" => nil, "name" => nil,

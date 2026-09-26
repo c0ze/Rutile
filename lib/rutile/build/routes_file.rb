@@ -29,6 +29,8 @@ module Rutile
         unsupported!("#{where}: a route without a controller (a redirect or a mount)") unless route["controller"]
         unsupported!("#{where}: requirements") unless route["requirements"].empty?
         unsupported!("#{where}: request constraints") unless route["request_constraints"].empty?
+        # `via: :all` has no verb list: Journey matches any method with "".
+        unsupported!("#{where}: via: :all") if route["verb"].empty?
         handler = handler(route, where)
         route["verb"].split("|").flat_map do |verb|
           unsupported!("#{where}: #{verb}") unless VERBS.include?(verb)

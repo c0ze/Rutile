@@ -6,8 +6,10 @@ module Rutile
     module Routes
       module_function
 
+      # Rails' own routes (`/rails/info`, the welcome page) are marked
+      # internal, added in development only, and never the app's.
       def extract(app)
-        app.routes.routes.map do |route|
+        app.routes.routes.reject(&:internal).map do |route|
           {
             "verb" => route.verb,
             "path" => route.path.spec.to_s,
