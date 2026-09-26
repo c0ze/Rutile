@@ -31,7 +31,8 @@ module Rutile
         rust = Names.constant(Names.snake(name))
         item = "// #{path}:#{assignment.location.start_line}\nconst #{rust}: #{rust_type} = #{value};"
         @uses.constant(rust, item) || unsupported!(node, "#{name}, which means two things in this file")
-        type == T::STR ? Code[rust, type, literal: true] : Code[rust, type]
+        symbol = unfrozen(assignment.value).is_a?(Prism::SymbolNode)
+        type == T::STR ? Code[rust, type, literal: true, symbol:] : Code[rust, type]
       end
 
       # name => its last assignment in the file's class body. A file with
@@ -49,12 +50,17 @@ module Rutile
 
       # [type, Rust type, Rust value] of a literal, frozen or not.
       def literal_constant(value)
-        value = value.receiver if value.is_a?(Prism::CallNode) && value.name == :freeze && value.receiver && !value.arguments
+        value = unfrozen(value)
         case value
         when Prism::IntegerNode then [T::INT, "i64", value.value.to_s] if value.value.bit_length < 64
         when Prism::StringNode, Prism::SymbolNode then [T::STR, "&str", Names.str(value.unescaped)]
         when Prism::TrueNode, Prism::FalseNode then [T::BOOL, "bool", value.is_a?(Prism::TrueNode).to_s]
         end
+      end
+
+      def unfrozen(value)
+        frozen = value.is_a?(Prism::CallNode) && value.name == :freeze && value.receiver && !value.arguments
+        frozen ? value.receiver : value
       end
     end
   end

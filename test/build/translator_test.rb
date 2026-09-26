@@ -177,6 +177,16 @@ class TranslatorTest < Minitest::Test
                  refused('errors.add(:body, "x") if post == user', model: "Comment")
   end
 
+  # An enum reads as a String in Ruby, and "published" == :published is
+  # false; a Symbol message would go to the client as its name.
+  def test_symbols_are_not_strings_where_ruby_can_tell
+    message = "snippet.rb:1: == between a string and a symbol isn't supported yet"
+    assert_equal message, refused('self.title = "x" if status == :published')
+    assert_equal message, refused("state = :published\nself.title = \"x\" if status == state").sub(":2:", ":1:")
+    assert_rust_includes callback('self.title = "x" if :a == :a'), "if \"a\" == \"a\" {"
+    assert_equal "snippet.rb:1: an error message that isn't a string isn't supported yet", refused("errors.add(:title, :blank)")
+  end
+
   def test_equality_with_literals_and_nil
     assert_rust_includes callback("self.body = \"x\" if title == \"a\" || user_id == nil"),
                          'if ctx[post].title.clone().as_deref() == Some("a") || ctx[post].user_id.is_none() {'

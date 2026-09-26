@@ -144,14 +144,16 @@ module Rutile
         code = value(node.value)
         unsupported!(node, "a local assigned nil") if code.type == T::NIL
         if (known = @locals[name])
-          raise Unsupported.at(@path, node, "giving #{name} a new type") unless known.type == code.type
+          same = known.type == code.type && !known.extra[:symbol] == !code.extra[:symbol]
+          raise Unsupported.at(@path, node, "giving #{name} a new type") unless same
 
           @lines << "#{rust} = #{owned(code, known.type)};"
         else
           # A local assigned again holds a String, whatever literal it starts from.
           again = @writes[name] > 1
           @lines << "let #{"mut " if again}#{rust} = #{owned(code, again ? code.type : nil)};"
-          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal]]
+          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal],
+                                                    symbol: code.extra[:symbol]]
         end
       end
 
@@ -192,7 +194,9 @@ module Rutile
         case node
         when Prism::StringNode then Code[Names.str(node.unescaped), T::STR, literal: true]
         when Prism::InterpolatedStringNode then interpolation(node)
-        when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true]
+        # A Symbol is a string in Rust; `symbol` keeps the difference where
+        # Ruby would see it (`"done" == :done` is false).
+        when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true, symbol: true]
         when Prism::IntegerNode then Code[node.value.to_s, T::INT]
         when Prism::NilNode then Code["None", T::NIL]
         when Prism::AndNode, Prism::OrNode then logic(node)

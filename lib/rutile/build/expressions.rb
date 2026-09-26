@@ -129,6 +129,11 @@ module Rutile
       end
 
       def equality(left, right, name, node)
+        # Attributes, enums included, and params are Strings in Ruby; a
+        # Symbol never equals one.
+        if !left.extra[:symbol] != !right.extra[:symbol]
+          unsupported!(node, "#{name} between a string and a symbol")
+        end
         left, right = settle([left, right], :none)
         l = left.type.nilable? ? left.type.inner : left.type
         r = right.type.nilable? ? right.type.inner : right.type

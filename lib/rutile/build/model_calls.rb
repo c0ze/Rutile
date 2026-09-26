@@ -243,7 +243,7 @@ module Rutile
         return nil unless name == "add" && args.size == 2 && owner
 
         message = settle([expr(args[1])], :write).first
-        unsupported!(node, "an error message that isn't a string") unless message.type == T::STR
+        unsupported!(node, "an error message that isn't a string") unless message.type == T::STR && !message.extra[:symbol]
         Code["#{ctx_recv}.errors_mut(#{owner}).add(#{Names.str(symbol!(args[0], node))}, #{owned(message)})", T::UNIT, :write]
       end
     end
