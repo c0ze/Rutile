@@ -29,6 +29,9 @@ module Rutile
           "base_class" => model.base_class.name,
           # Set when saves compare and bump a lock_version column.
           "locking_column" => (model.locking_column if model.locking_enabled?),
+          # Attributes whose default the model sets (`enum ..., default:`,
+          # `attribute ..., default:`) rather than the table.
+          "model_defaults" => model_defaults(model),
           "source" => Source.const_location(model.name),
           # Every attribute Active Record knows, including `attribute` declarations with no column.
           "attributes" => model.attribute_types.sort.to_h { |name, type| [name, type.type.to_s] },
@@ -84,6 +87,10 @@ module Rutile
 
       # The methods `enum` defined: `done?` and `done!`, or none with
       # `instance_methods: false`, or `status_done?` with `prefix: true`.
+      def model_defaults(model)
+        model._default_attributes.keys.select { model._default_attributes[_1].is_a?(ActiveModel::Attribute::UserProvidedDefault) }.sort
+      end
+
       def enum_methods(model)
         return [] unless model.respond_to?(:_enum_methods_module, true)
 

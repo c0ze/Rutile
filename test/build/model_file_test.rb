@@ -202,6 +202,21 @@ class ModelFileTest < Minitest::Test
     assert_equal "app/models/post.rb: optimistic locking on lock_version isn't supported yet", error.message
   end
 
+  # The struct's defaults are the table's; `enum :status, ..., default: :x`
+  # would give new records the table's instead.
+  def test_defaults_the_model_sets_are_refused
+    defaulted = app_with { |m| m["models"].find { _1["name"] == "Post" }["model_defaults"] = ["status"] }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", defaulted) }
+    assert_equal "app/models/post.rb: a default for status set in the model (enum default: or attribute) isn't supported yet",
+                 error.message
+    stamped = app_with do |m|
+      m["tables"].find { _1["name"] == "posts" }["columns"].find { _1["name"] == "published_at" }["default"] = "2026-01-01 00:00:00"
+    end
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", stamped) }
+    assert_equal "app/models/post.rb: the default 2026-01-01 00:00:00 on the datetime column published_at isn't supported yet",
+                 error.message
+  end
+
   def test_an_around_callback_is_refused
     broken = app_with do |m|
       save = m["models"].find { _1["name"] == "Post" }["callbacks"]["save"]

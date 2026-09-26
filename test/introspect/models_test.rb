@@ -9,6 +9,7 @@ class ModelsTest < Minitest::Test
     assert_equal %w[Comment Post User], manifest["models"].map { _1["name"] }
     assert_equal %w[Comment Post User], manifest["models"].map { _1["base_class"] }
     assert_equal [nil, nil, nil], manifest["models"].map { _1["locking_column"] }
+    assert_equal [[], [], []], manifest["models"].map { _1["model_defaults"] }
   end
 
   def test_table_and_source

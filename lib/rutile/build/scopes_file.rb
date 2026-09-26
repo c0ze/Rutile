@@ -39,11 +39,22 @@ module Rutile
 
       private
 
-      # `draft` and `not_draft` from `enum :status, { draft: 0, ... }`.
+      # `draft` and `not_draft` from `enum :status, { draft: 0, ... }`. Rails
+      # defines each label's scope, then its `not_` scope, label by label, so
+      # with labels `not_started` and `started` the later definition of
+      # `not_started` is the one that stands.
       def enum_scope(name)
         enums = @app.model(@model)["enums"]
-        label, method = enums.values.any? { _1.key?(name) } ? [name, "where_eq"] : [name.delete_prefix("not_"), "where_not"]
-        attribute, = enums.find { |_, values| values.key?(label) }
+        negated = name.delete_prefix("not_")
+        found = enums.flat_map do |attribute, values|
+          labels = values.keys
+          [([labels.index(name), attribute, name, "where_eq"] if values.key?(name)),
+           ([labels.index(negated), attribute, negated, "where_not"] if negated != name && values.key?(negated))].compact
+        end
+        if found.map { _1[1] }.uniq.size > 1
+          raise Unsupported, "#{@app.model_path(@model)}: the scope :#{name}, which two enums define, isn't supported yet"
+        end
+        _, attribute, label, method = found.max_by(&:first)
         raise Unsupported, "#{@app.model_path(@model)}: framework scope :#{name} isn't supported yet" unless attribute
 
         ["fn #{name}(self) -> Self;", "fn #{name}(self) -> Self {\nself.#{method}(#{Names.str(attribute)}, #{Names.str(label)})\n}"]

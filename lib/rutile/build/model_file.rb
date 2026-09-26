@@ -105,6 +105,12 @@ module Rutile
         locking = @model.fetch("locking_column")
         raise Unsupported, "#{@path}: optimistic locking on #{locking} isn't supported yet" if locking
 
+        # The struct takes its defaults from the table; a model's own would
+        # quietly give new records the database's instead.
+        @model.fetch("model_defaults").each do |attribute|
+          raise Unsupported, "#{@path}: a default for #{attribute} set in the model (enum default: or attribute) isn't supported yet"
+        end
+
         table["columns"].each do |column|
           next unless column["default_function"] && column["name"] != "id"
 
@@ -141,8 +147,8 @@ module Rutile
         when "boolean" then " = #{default == "true"}"
         when "string", "text" then " = #{Names.str(default)}"
         # INSERT writes every column, so a dropped default would be NULL.
-        when "date" then raise Unsupported, "#{@path}: the default #{default} on the date column #{column["name"]} isn't supported yet"
-        else ""
+        else
+          raise Unsupported, "#{@path}: the default #{default} on the #{column["type"]} column #{column["name"]} isn't supported yet"
         end
       end
 

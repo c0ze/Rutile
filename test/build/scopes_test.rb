@@ -30,6 +30,23 @@ class ScopesTest < Minitest::Test
     assert_rust_includes post, 'fn not_draft(self) -> Self { self.where_not("status", "draft") }'
   end
 
+  # Rails defines draft, not_draft, then the next label's pair, and a later
+  # scope replaces an earlier one of the same name.
+  def test_a_label_starting_with_not_is_whichever_scope_came_last
+    scopes = lambda do |labels|
+      app_with do |m|
+        post = m["models"].find { _1["name"] == "Post" }
+        post["enums"]["status"] = labels.each_with_index.to_h
+        post["scopes"] = %w[not_started started not_not_started].map { { "name" => _1, "origin" => "framework", "source" => nil } }
+      end
+    end
+    trait = ->(app) { Rutile::Build::Scopes.for_model(app, Rutile::Build::Uses.new, "Post") }
+    later_negation = trait.(scopes.(%w[not_started started]))
+    assert_rust_includes later_negation, 'fn not_started(self) -> Self { self.where_not("status", "started") }'
+    later_label = trait.(scopes.(%w[started not_started]))
+    assert_rust_includes later_label, 'fn not_started(self) -> Self { self.where_eq("status", "not_started") }'
+  end
+
   # A Ruby name that's a Rust keyword becomes a raw identifier.
   def test_a_scope_parameter_named_like_a_keyword
     app = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("-> { where(status: :published) }", "->(type) { where(status: type) }") } })
