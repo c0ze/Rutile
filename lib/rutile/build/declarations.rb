@@ -13,6 +13,7 @@ module Rutile
       module_function
 
       def check(app, path, allowed)
+        outside(app, path)
         classes(app.source.tree(path)).each do |klass|
           statements = klass.body.is_a?(Prism::StatementsNode) ? klass.body.body : [klass.body].compact
           statements.each do |node|
@@ -26,6 +27,19 @@ module Rutile
               raise Unsupported.at(path, node, "#{what} in a class body")
             end
           end
+        end
+      end
+
+      # Code beside the class runs when the file loads and can change it
+      # (`Task.class_eval { ... }` after `end`), which nothing would compile.
+      def outside(app, path)
+        tree = app.source.tree(path)
+        statements = tree.is_a?(Prism::ProgramNode) ? tree.statements.body : []
+        statements.each do |node|
+          next if node.is_a?(Prism::ClassNode)
+          next if node.is_a?(Prism::CallNode) && node.receiver.nil? && %i[require require_relative].include?(node.name)
+
+          app.attempt { raise Unsupported.at(path, node, "#{node.type.to_s.delete_suffix("_node").tr("_", " ")} outside the class") }
         end
       end
 

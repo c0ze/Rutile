@@ -46,6 +46,38 @@ class RulesTest < Minitest::Test
                  findings("lib/core_ext.rb" => "class String\n  def shout = upcase\nend\n")
   end
 
+  # Other doors to the same room: a singleton class, send, refinements,
+  # reflection on the live program, and an initializer.
+  def test_reopening_and_reflection_by_other_means
+    ruby = <<~RUBY
+      class << String
+        def loud = 1
+      end
+      String.send(:include, Comparable)
+      module Shout
+        refine(String) { def shout = upcase }
+      end
+      class Peek < ApplicationRecord
+        def a = instance_variable_get(:@title)
+        def b = Object.const_get(:Post)
+        def c = ObjectSpace.each_object(Peek).count
+      end
+    RUBY
+    assert_equal [
+      "app/models/peek.rb:1: reopening String can't be compiled; use a helper module",
+      "app/models/peek.rb:4: reopening String can't be compiled; use a helper module",
+      "app/models/peek.rb:6: refine can't be compiled; use a helper module",
+      "app/models/peek.rb:9: instance_variable_get can't be compiled; use explicit methods and attributes",
+      "app/models/peek.rb:10: const_get can't be compiled; use explicit methods and attributes",
+      "app/models/peek.rb:11: ObjectSpace can't be compiled; use explicit references"
+    ], findings("app/models/peek.rb" => ruby)
+    assert_equal ["config/initializers/core_ext.rb:1: reopening String can't be compiled; use a helper module"],
+                 findings("config/initializers/core_ext.rb" => "class String
+  def shout = upcase
+end
+")
+  end
+
   def test_what_is_fine
     ruby = <<~RUBY
       class Loud < String; end

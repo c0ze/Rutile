@@ -211,6 +211,14 @@ class ModelFileTest < Minitest::Test
     assert_equal "app/models/post.rb: around_save callbacks isn't supported yet", error.message
   end
 
+  # Code after the class runs at load and can redefine what the build
+  # compiled: `Post.class_eval { def title = "x" }` changed nothing here.
+  def test_code_outside_the_class_is_refused
+    app = scratch_app({ "app/models/post.rb" => ->(ruby) { "require \"json\"\n#{ruby}Post.class_eval do\n  def title = \"x\"\nend\n" } })
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
+    assert_match(%r{\Aapp/models/post.rb:\d+: call outside the class isn't supported yet\z}, error.message)
+  end
+
   def test_a_namespaced_model_is_refused
     renamed = app_with { |m| m["models"].find { _1["name"] == "Post" }["name"] = "Blog::Post" }
     error = assert_raises(Rutile::Build::Unsupported) { rust("Blog::Post", renamed) }

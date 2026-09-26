@@ -11,10 +11,13 @@ module Rutile
       STATE = "a constant, Rails.cache, or the database"
       # Calls on a core class that change it: `String.class_eval { ... }`.
       REOPENERS = %i[class_eval module_eval class_exec module_exec prepend include extend define_method alias_method].freeze
+      # Reflection that reads or writes what only the running program knows.
+      REFLECTION = %i[instance_variable_get instance_variable_set const_get binding].freeze
 
-      # Every .rb file under app/ and lib/.
+      # Every .rb file under app/ and lib/, and the initializers, which is
+      # where a monkey patch usually lives.
       def self.scan(root, diagnostics)
-        Dir.glob("{app,lib}/**/*.rb", base: root).sort.each do |path|
+        Dir.glob("{app,lib,config/initializers}/**/*.rb", base: root).sort.each do |path|
           result = Prism.parse_file(File.join(root, path))
           next diagnostics.problem("#{path}: #{result.errors.first.message}") if result.failure?
 
@@ -31,11 +34,13 @@ module Rutile
 
       def visit_call_node(node)
         args = node.arguments&.arguments || []
-        if REOPENERS.include?(node.name) && (core = core_name(node.receiver, absolute_only: false))
+        if (core = core_name(node.receiver, absolute_only: false)) && reopens?(node, args)
           report(node, "reopening #{core}", "a helper module")
           return super
         end
         case node.name
+        when *REFLECTION then report(node, node.name.to_s, "explicit methods and attributes")
+        when :refine then report(node, "refine", "a helper module")
         when :eval then report(node, "eval", "a method, or a block form the compiler understands")
         when *EVALS
           report(node, "#{node.name} with a string", "a method, or a block form the compiler understands") unless args.empty?
@@ -44,6 +49,19 @@ module Rutile
           report(node, "#{node.name} with a computed name", "a case over the known names") unless named
         when :define_method, :define_singleton_method then report(node, node.name.to_s, "a literal list of methods")
         end
+        super
+      end
+
+      # `class << String` reopens String as surely as `class String`.
+      def visit_singleton_class_node(node)
+        core = core_name(node.expression, absolute_only: false)
+        report(node, "reopening #{core}", "a helper module") if core
+        super
+      end
+
+      # ObjectSpace walks the live heap, which a compiled program doesn't have.
+      def visit_constant_read_node(node)
+        report(node, "ObjectSpace", "explicit references") if node.name == :ObjectSpace
         super
       end
 
@@ -71,6 +89,13 @@ module Rutile
       end
 
       private
+
+      # `String.class_eval`, or the same through send: `String.send(:include, M)`.
+      def reopens?(node, args)
+        return true if REOPENERS.include?(node.name)
+
+        SENDS.include?(node.name) && args.first.is_a?(Prism::SymbolNode) && REOPENERS.include?(args.first.unescaped.to_sym)
+      end
 
       def nested(node)
         core = core_name(node.constant_path, absolute_only: !@depth.zero?)
