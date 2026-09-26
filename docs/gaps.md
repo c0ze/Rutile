@@ -59,7 +59,6 @@ Each of these is refused with the file and line rather than compiled wrong. They
 - **Methods Rails itself calls**: a model method replacing one of Active Record's (`destroy`, `readonly?`, `self.generate_unique_secure_token`), or a column's or association's reader. Rutile only controls its own call sites, so RustOnRails would call its own.
 - **A `rescue` or `ensure` around a whole method body**, and enum methods renamed by `prefix:` or `suffix:`.
 - **Hashes** anywhere but a literal rendered as JSON or merged into `as_json`: reading keys back, `as_json` of a relation then `merge`, or a String and a Symbol key of the same name in one hash, which Rails' JSON encoder raises on.
-- **A benchmark for the tracker.** `rake example:benchmark` stays blog-only: loadgen sends no headers, and every tracker route but sign-up wants a token.
 
 ## Runtime differences only verify can catch
 
