@@ -12,7 +12,7 @@ From an audit of both repositories, reviewed by independent reviewers:
 - `rutile check` also catches code beside a model's class, `require` there, reopening a class by `send`, `class <<` or `refine`, reflection, and patches to app classes or Rails from initializers and `lib/`.
 - `rutile check` and `build` work in development, where Rails adds routes of its own.
 - Verify fails when no request reached the Rust server, returns every response header, and finds the binary wherever Cargo built it.
-- Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MAX_BODY_BYTES`).
+- Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MIN_RATE`, `MAX_BODY_BYTES`).
 
 ## 0.5.0
 
