@@ -16,12 +16,15 @@ module Rutile
 
       # The app's locale files that reword validation messages, which the
       # runtime writes as Rails' English defaults: every file I18n loads from
-      # inside the app, wherever config.i18n.load_path puts it. A Ruby locale
-      # file can't be read without running it, so it counts.
+      # inside the app, wherever config.i18n.load_path puts it, but not from
+      # gems installed there (bundle config path vendor/bundle), whose
+      # locales are Rails' own. A Ruby locale file can't be read without
+      # running it, so it counts.
       def error_message_files(app)
         root = "#{app.root}/"
         paths = (I18n.load_path.flatten.map(&:to_s) + Dir.glob("#{root}config/locales/**/*.{yml,yaml,rb}")).uniq
-        paths.select { _1.start_with?(root) && File.file?(_1) && rewords_errors?(_1) }.map { _1.delete_prefix(root) }.sort
+        mine = paths.select { |path| path.start_with?(root) && Gem.path.none? { |gems| path.start_with?("#{gems}/") } }
+        mine.select { File.file?(_1) && rewords_errors?(_1) }.map { _1.delete_prefix(root) }.sort
       end
 
       def rewords_errors?(path)
