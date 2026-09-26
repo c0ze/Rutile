@@ -7,6 +7,8 @@ class ModelsTest < Minitest::Test
 
   def test_lists_app_models_only
     assert_equal %w[Comment Post User], manifest["models"].map { _1["name"] }
+    assert_equal %w[Comment Post User], manifest["models"].map { _1["base_class"] }
+    assert_equal [nil, nil, nil], manifest["models"].map { _1["locking_column"] }
   end
 
   def test_table_and_source

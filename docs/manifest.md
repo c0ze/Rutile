@@ -49,12 +49,14 @@ Columns keep database order. `type` is Active Record's type name; `default` is t
 
 ## `models`
 
-Every non-abstract Active Record model whose class is defined under `app/`, sorted by name. `validators` are listed in the order they run.
+Every non-abstract Active Record model whose class is defined under `app/`, sorted by name. `validators` are listed in the order they run. `base_class` is the model's own name unless it's a single-table inheritance subclass, and `locking_column` names the `lock_version` column when optimistic locking is on (null otherwise); `rutile build` refuses both.
 
 ```json
 {
   "name": "Post",
   "table_name": "posts",
+  "base_class": "Post",
+  "locking_column": null,
   "source": {"path": "app/models/post.rb", "line": 1},
   "attributes": {"id": "integer", "status": "integer", "title": "string", "...": "..."},
   "associations": [

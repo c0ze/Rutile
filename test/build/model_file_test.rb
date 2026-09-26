@@ -190,6 +190,18 @@ class ModelFileTest < Minitest::Test
     assert_equal "app/models/post.rb: the database default now() on created_at isn't supported yet", error.message
   end
 
+  # Each compiles to a model that reads and writes other rows than Rails'
+  # (no type condition, no lock_version check), so the build refuses them.
+  def test_single_table_inheritance_and_optimistic_locking_are_refused
+    post = ->(m) { m["models"].find { _1["name"] == "Post" } }
+    inherited = app_with { post.(_1)["base_class"] = "User" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", inherited) }
+    assert_equal "app/models/post.rb: single-table inheritance from User isn't supported yet", error.message
+    locked = app_with { post.(_1)["locking_column"] = "lock_version" }
+    error = assert_raises(Rutile::Build::Unsupported) { rust("Post", locked) }
+    assert_equal "app/models/post.rb: optimistic locking on lock_version isn't supported yet", error.message
+  end
+
   def test_an_around_callback_is_refused
     broken = app_with do |m|
       save = m["models"].find { _1["name"] == "Post" }["callbacks"]["save"]

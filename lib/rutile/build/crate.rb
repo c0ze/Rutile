@@ -17,6 +17,7 @@ module Rutile
       end
 
       def files
+        @app.attempt { @app.utc! }
         models = @app.models.map { ModelFile.new(@app, _1["name"]) }
         record = ApplicationRecordFile.new(@app)
         controllers = ControllerFile.all(@app)

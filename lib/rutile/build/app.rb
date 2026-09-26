@@ -79,6 +79,16 @@ module Rutile
 
       def scope(name, scope) = model(name)["scopes"].find { _1["name"] == scope.to_s }
 
+      # The runtime reads and writes times in UTC, Rails' default. Another
+      # zone changes how `render json:` writes a time and where a date's
+      # day starts in a query, so the build refuses it rather than differ.
+      def utc!
+        config = manifest.fetch("config")
+        zone, stored = config.values_at("time_zone", "active_record_default_timezone")
+        raise Unsupported, "config/application.rb: config.time_zone #{zone} isn't supported yet" unless zone == "UTC"
+        raise Unsupported, "config/application.rb: active_record.default_timezone #{stored} isn't supported yet" unless stored == "utc"
+      end
+
       def controllers = manifest.fetch("controllers")
       def controller(name) = controllers.find { _1["name"] == name } || raise(Error, "no controller #{name}")
       def routes = manifest.fetch("routes")

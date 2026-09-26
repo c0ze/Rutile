@@ -25,6 +25,10 @@ module Rutile
         {
           "name" => model.name,
           "table_name" => model.table_name,
+          # Another model's name for a single-table inheritance subclass.
+          "base_class" => model.base_class.name,
+          # Set when saves compare and bump a lock_version column.
+          "locking_column" => (model.locking_column if model.locking_enabled?),
           "source" => Source.const_location(model.name),
           # Every attribute Active Record knows, including `attribute` declarations with no column.
           "attributes" => model.attribute_types.sort.to_h { |name, type| [name, type.type.to_s] },

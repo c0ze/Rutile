@@ -23,6 +23,16 @@ class CrateTest < Minitest::Test
     end
   end
 
+  # The runtime's times are UTC; another zone would change what JSON says.
+  def test_an_app_outside_utc_is_refused
+    tokyo = app_with { _1["config"]["time_zone"] = "Tokyo" }
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::Crate.new(tokyo, "unused", name: "blog", runtime: RUNTIME).files }
+    assert_equal "config/application.rb: config.time_zone Tokyo isn't supported yet", error.message
+    local = app_with { _1["config"]["active_record_default_timezone"] = "local" }
+    error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::Crate.new(local, "unused", name: "blog", runtime: RUNTIME).files }
+    assert_equal "config/application.rb: active_record.default_timezone local isn't supported yet", error.message
+  end
+
   def test_a_rebuild_replaces_src_and_keeps_the_rest
     Dir.mktmpdir do |out|
       build(out)

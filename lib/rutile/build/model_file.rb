@@ -91,11 +91,19 @@ module Rutile
         end
       end
 
-      # What the runtime can't do for a table: key it on anything but id, or
-      # leave a column out of INSERT so the database computes it.
+      # What the runtime can't do for a table: key it on anything but id,
+      # leave a column out of INSERT so the database computes it, share it
+      # between classes by a type column, or check a lock_version on save.
+      # Each would compile and quietly behave differently.
       def storable!
         table = @app.table(@name)
         raise Unsupported, "#{@path}: a primary key other than id isn't supported yet" unless table["primary_key"] == "id"
+
+        base = @model.fetch("base_class")
+        raise Unsupported, "#{@path}: single-table inheritance from #{base} isn't supported yet" unless base == @name
+
+        locking = @model.fetch("locking_column")
+        raise Unsupported, "#{@path}: optimistic locking on #{locking} isn't supported yet" if locking
 
         table["columns"].each do |column|
           next unless column["default_function"] && column["name"] != "id"
