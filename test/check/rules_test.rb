@@ -94,6 +94,16 @@ end
 ")
   end
 
+  # ApplicationRecord is abstract and not among the manifest's models, but a
+  # patch to it reaches every model.
+  def test_application_record_has_a_home_too
+    app = Struct.new(:models, :controllers).new([{ "name" => "Post", "source" => { "path" => "app/models/post.rb" } }], [])
+    homes = Rutile::Check.homes(app)
+    assert_equal "app/models/application_record.rb", homes["ApplicationRecord"]
+    assert_equal ["config/initializers/patch.rb:1: reopening ApplicationRecord can't be compiled; use a helper module"],
+                 findings({ "config/initializers/patch.rb" => "ApplicationRecord.class_eval { def title = \"x\" }\n" }, homes)
+  end
+
   def test_what_is_fine
     ruby = <<~RUBY
       class Loud < String; end

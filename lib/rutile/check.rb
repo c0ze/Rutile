@@ -15,12 +15,20 @@ module Rutile
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
       diagnostics = Build::Diagnostics.new
       app = Build::App.new(app_dir, JSON.parse(File.read(manifest)), diagnostics:)
-      homes = (app.models + app.controllers).to_h { [_1["name"], _1.dig("source", "path")] }.compact
-      Rules.scan(app_dir, diagnostics, homes:)
+      Rules.scan(app_dir, diagnostics, homes: homes(app))
       Gems.check(app.manifest, diagnostics)
       Files.check(app_dir, diagnostics)
       Build::Crate.new(app, app_dir, name: File.basename(app_dir), runtime: app_dir).files
       diagnostics
+    end
+
+    # Each app model and controller's own file. ApplicationRecord is
+    # abstract, so the manifest's models leave it out; a patch to it changes
+    # every model all the same.
+    def homes(app)
+      found = (app.models + app.controllers).to_h { [_1["name"], _1.dig("source", "path")] }.compact
+      found["ApplicationRecord"] ||= Build::Constants::PARENTS.fetch(:model)
+      found
     end
 
     # Problems, then notes, then the count.
