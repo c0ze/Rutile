@@ -11,17 +11,23 @@ module Rutile
       # Headers Net::HTTP fills in by itself. Given its own Accept-Encoding,
       # it would also inflate the response before the test saw it.
       DEFAULTED = %w[accept accept-encoding user-agent].freeze
-      RETURNED = %w[content-type content-encoding].freeze
+      # Response headers about the connection, not the response; the rest
+      # (Location, Set-Cookie, ...) go back to the test.
+      CONNECTION = %w[connection keep-alive transfer-encoding content-length].freeze
 
       # The app's route set: integration tests only get URL helpers such as
       # `posts_path` from an app that answers `routes`.
       attr_reader :routes
+
+      # How many requests went to the other server.
+      attr_reader :forwarded
 
       # `after_request` runs once each response is back.
       def initialize(base_url, routes = nil, &after_request)
         @uri = URI(base_url)
         @routes = routes
         @after_request = after_request
+        @forwarded = 0
       end
 
       def call(env)
@@ -34,8 +40,9 @@ module Rutile
         headers(env).each { |header, value| outgoing[header] = value }
         outgoing.body = body unless body.empty?
         response = Net::HTTP.start(@uri.host, @uri.port) { |http| http.request(outgoing) }
+        @forwarded += 1
         @after_request&.call
-        headers = RETURNED.to_h { [_1, response[_1]] }.compact
+        headers = response.each_header.to_h.except(*CONNECTION)
         [response.code.to_i, headers, [response.body.to_s]]
       end
 
@@ -57,6 +64,13 @@ module Rutile
         target = new(base_url, Rails.application.routes) { ActiveRecord::Base.clear_query_caches_for_current_thread }
         ActionDispatch::IntegrationTest.app = target
         ActiveSupport::TestCase.use_transactional_tests = false
+        # A green run that never reached the other server tested Rails.
+        Minitest.after_run do
+          next unless target.forwarded.zero?
+
+          warn "rutile verify: no request reached #{base_url}; the tests ran against Rails"
+          exit false
+        end
       end
     end
   end

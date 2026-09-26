@@ -74,7 +74,7 @@ namespace :example do
     env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
             "WORKERS" => "4" }
     ExampleServers.ensure_port_free(port)
-    server = spawn(env, File.join(rust, "target/release", EXAMPLE))
+    server = spawn(env, ExampleServers.release_binary(rust, EXAMPLE))
     begin
       ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", server)
       target = { "RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1" }

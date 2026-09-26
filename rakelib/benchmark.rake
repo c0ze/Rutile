@@ -17,7 +17,7 @@ namespace :example do
   task benchmark: :build do
     rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE, "-p", "loadgen" }
-    loadgen = File.join(rust, "target/release/loadgen")
+    loadgen = ExampleServers.release_binary(rust, "loadgen")
     bench = BENCHMARKS.fetch(EXAMPLE) { abort "no benchmark for EXAMPLE=#{EXAMPLE}" }
     load_rows(bench[:seed])
     paths = bench[:paths].call
@@ -123,7 +123,7 @@ end
 def start_rust(rust, port, workers:)
   env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
           "WORKERS" => workers.to_s }
-  spawn(env, File.join(rust, "target/release", EXAMPLE), err: File::NULL)
+  spawn(env, ExampleServers.release_binary(rust, EXAMPLE), err: File::NULL)
 end
 
 # The server and its forked workers. Proportional set size where Linux

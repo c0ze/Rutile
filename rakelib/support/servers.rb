@@ -1,3 +1,4 @@
+require "json"
 require "net/http"
 require "socket"
 
@@ -5,6 +6,15 @@ require "socket"
 # sure the server that answers is the one just started.
 module ExampleServers
   module_function
+
+  # Where `cargo build --release` in `workspace` put `name`: its target
+  # directory follows CARGO_TARGET_DIR and .cargo/config, not always target/.
+  def release_binary(workspace, name)
+    metadata = IO.popen(%w[cargo metadata --format-version 1 --no-deps], chdir: workspace, &:read)
+    raise "cargo metadata failed in #{workspace}" unless $?.success?
+
+    File.join(JSON.parse(metadata).fetch("target_directory"), "release", name)
+  end
 
   def ensure_port_free(port)
     TCPSocket.new("127.0.0.1", port).close
