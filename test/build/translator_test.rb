@@ -164,6 +164,19 @@ class TranslatorTest < Minitest::Test
                          'ctx[post].published_at.ok_or(Error::Nil { what: "<" })? < now() {'
   end
 
+  # Two loads of one row are two handles; Active Record's == compares ids.
+  def test_records_compare_by_id_as_active_record_does
+    assert_rust_includes callback('errors.add(:body, "x") if post.user == user', model: "Comment"), <<~RUST
+      let user = Post::USER.get(ctx, post)?;
+      let user_2 = Comment::USER.get(ctx, comment)?;
+      if ctx.same_record(user, user_2) {
+    RUST
+    assert_rust_includes callback('errors.add(:body, "x") if post.user != user', model: "Comment"),
+                         "if !ctx.same_record(user, user_2) {"
+    assert_equal "snippet.rb:1: == between Post or nil and User or nil isn't supported yet",
+                 refused('errors.add(:body, "x") if post == user', model: "Comment")
+  end
+
   def test_equality_with_literals_and_nil
     assert_rust_includes callback("self.body = \"x\" if title == \"a\" || user_id == nil"),
                          'if ctx[post].title.clone().as_deref() == Some("a") || ctx[post].user_id.is_none() {'

@@ -32,8 +32,12 @@ module Rutile
       # statements run.
       def compare(node, name, arg)
         left, right = in_order([node.receiver, arg]) { value(_1) }
+        ctx = touch(left, right)
         rust = if [left, right].any? { _1.type == T::NIL }
                  nil_compare(left, right, name, node)
+               elsif %w[== !=].include?(name) && record?(left) && record?(right)
+                 ctx = :read if ctx == :none
+                 same_record(left, right, name, node)
                elsif %w[== !=].include?(name)
                  equality(left, right, name, node)
                else
@@ -45,7 +49,19 @@ module Rutile
                  left, right = settle([left, right], :none)
                  "#{group(left.rust, left)} #{name} #{group(right.rust, right)}"
                end
-        Code[rust, T::BOOL, touch(left, right), compared: true]
+        Code[rust, T::BOOL, ctx, compared: true]
+      end
+
+      def record?(code) = (code.type.nilable? ? code.type.inner : code.type).kind == :record
+
+      # Active Record's `==` compares ids: the same row loaded twice is two
+      # handles, so `@task.assignee == current_user` can't compare them.
+      def same_record(left, right, name, node)
+        need_ctx!(node)
+        l, r = [left, right].map { (_1.type.nilable? ? _1.type.inner : _1.type).model }
+        unsupported!(node, "#{name} between #{describe(left.type)} and #{describe(right.type)}") unless l == r
+        left, right = settle([left, right], :read)
+        "#{"!" if name == "!="}#{ctx_recv}.same_record(#{left.rust}, #{right.rust})"
       end
 
       def nil_compare(left, right, name, node)
