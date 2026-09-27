@@ -49,7 +49,7 @@ module Rutile
           unsupported!("a format validator whose with: isn't a regexp") unless regexp.is_a?(Hash) && regexp.key?("regexp")
           pattern = RubyRegexp.to_rust(regexp["regexp"], regexp["options"], @path)
           @uses.rt("Regex")
-          %(Check::Format(Regex::new(#{Names.raw(pattern)}).expect("the Ruby regexp compiles")))
+          %(Check::Format(Regex::new(#{Names.raw(pattern)}).expect(#{Names.str("#{@path}: a format regexp")})))
         end
       end
 

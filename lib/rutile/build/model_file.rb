@@ -35,7 +35,7 @@ module Rutile
       end
 
       # The names src/models/mod.rs re-exports.
-      attr_reader :exports
+      attr_reader :exports, :name
 
       def file_name = "#{Names.snake(@name)}.rs"
 

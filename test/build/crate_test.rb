@@ -19,6 +19,16 @@ class CrateTest < Minitest::Test
       assert_includes File.read(File.join(out, "src/models/mod.rs")), "pub use post::{Post, PostScopes};"
       assert_includes File.read(File.join(out, "src/main.rs")), "blog::routes::routes()"
       assert_includes File.read(File.join(out, "src/main.rs")), "limits: Limits::from_env()?,"
+      # cargo check doesn't parse regexps; the server builds them at boot.
+      assert_includes File.read(File.join(out, "src/main.rs")), "blog::models::behaviors();\n"
+      assert_rust_includes File.read(File.join(out, "src/models/mod.rs")), <<~RUST
+        pub fn behaviors() {
+            use rustonrails::Model;
+            Comment::behavior();
+            Post::behavior();
+            User::behavior();
+        }
+      RUST
       assert_match(/^rustonrails = \{ path = ".*RustOnRails" \}$/, File.read(File.join(out, "Cargo.toml")))
     end
   end
