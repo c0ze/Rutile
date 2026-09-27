@@ -16,10 +16,13 @@ Conventions:
 
 | Key | Meaning |
 |---|---|
-| `manifest_version` | format version, currently 5 |
+| `manifest_version` | format version, currently 6 |
 | `rails_version`, `ruby_version` | what the app booted with |
 | `config` | the settings below |
 | `gems` | the Gemfile's direct dependencies (below) |
+| `jobs` | the queue adapter, `GlobalID.app`, and each Active Job class: its queue, `perform`'s file, its app ancestors |
+| `views` | each template under `app/views`: its name, format, handler, and for ERB the Ruby Rails' handler compiles it to |
+| `view_helpers` | per full-stack controller, the helper methods the app defines for its views (by where their code is, or which app module owns them), as Rails mixed them in |
 
 ## `config`
 
@@ -30,6 +33,8 @@ Conventions:
 | `default_locale` | `"en"` | `I18n.default_locale`, which picks validation messages |
 | `active_record_default_timezone` | `"utc"` | how Active Record stores times |
 | `error_message_files` | `[]` | the app's locale files that reword validation messages (`errors`, `activerecord.errors`, `activemodel.errors`) |
+| `session` | `null` | the session store the middleware runs: the cookie store's name and options, and `cookie_format` (serializer, cipher, salt, metadata, rotations, the key's digest) |
+| `cookies_same_site`, `force_ssl`, `assume_ssl`, `ssl_options`, `default_headers` | | Rails' cookie and SSL middleware settings, and the headers it adds to every response |
 
 `rutile build` refuses a zone other than UTC, local times, a locale other than `en` and reworded messages: the runtime writes UTC and Rails' English messages.
 

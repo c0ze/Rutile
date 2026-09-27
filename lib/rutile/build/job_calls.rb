@@ -30,9 +30,13 @@ module Rutile
         arguments = values.zip(signature&.params || []).map do |value, param|
           # Active Job's JSON has no NaN or Infinity; Rails raises on them.
           next "rustonrails::jobs::float_argument(#{value})?" if [T::FLOAT, T.nilable(T::FLOAT)].include?(param.type)
-          next "Json::from(#{value})" unless param.type.inner&.kind == :record
+          # Typed as declared: a bare None or a literal past i32 has no Rust
+          # type of its own.
+          next "{ let argument: #{param.type.rust} = #{value}; Json::from(argument) }" unless param.type.inner&.kind == :record
 
-          "rustonrails::jobs::record_argument(#{ctx_ref}, &crate::jobs::APP, #{value})?"
+          # Named: a bare None leaves Rust no model to infer.
+          use_model(param.type.inner.model)
+          "rustonrails::jobs::record_argument::<#{param.type.inner.model}>(#{ctx_ref}, &crate::jobs::APP, #{value})?"
         end
         constant = Names.constant(Names.snake(job))
         @lines << "#{receiver.rust}::#{constant}.perform_later(&crate::jobs::APP, vec![#{arguments.join(", ")}])?;"

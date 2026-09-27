@@ -300,7 +300,7 @@ module Rutile
 
         paths = case @env
                 when :model then [@app.model_path(@model)]
-                when :controller then [@controller.path, ControllerFile::APPLICATION].uniq
+                when :controller then @controller.lookup_paths
                 else []
                 end
         found = paths.lazy.filter_map { @app.model_methods.visibility(_1, name) }.first

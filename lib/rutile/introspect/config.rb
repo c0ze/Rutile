@@ -20,6 +20,24 @@ module Rutile
         }
       end
 
+      # How Rails writes and reads the encrypted cookie the store uses: the
+      # serializer, the cipher, the key's salt, the purpose metadata, and
+      # any rotations to older settings.
+      def cookie_format(app)
+        env = app.env_config
+        rotations = env["action_dispatch.cookies_rotations"]
+        {
+          "serializer" => env["action_dispatch.cookies_serializer"]&.to_s,
+          "authenticated_encryption" => env["action_dispatch.use_authenticated_cookie_encryption"] == true,
+          "cipher" => env["action_dispatch.encrypted_cookie_cipher"]&.to_s,
+          "salt" => env["action_dispatch.authenticated_encrypted_cookie_salt"]&.to_s,
+          "metadata" => env["action_dispatch.use_cookies_with_metadata"] == true,
+          "rotations" => rotations.respond_to?(:encrypted) ? rotations.encrypted.size : 0,
+          # The digest the cookie's key is derived with from secret_key_base.
+          "key_digest" => ActiveSupport::KeyGenerator.hash_digest_class.name
+        }
+      end
+
       # A Symbol as its name; a Proc (decided per request) by its class.
       def symbol_or_class(value) = value.is_a?(Symbol) || value.nil? ? value&.to_s : { "dynamic" => value.class.name }
 
@@ -44,7 +62,8 @@ module Rutile
           "httponly" => options.fetch(:httponly, true) != false,
           "same_site" => options.key?(:same_site) ? symbol_or_class(options[:same_site]) : "default",
           "domain" => options[:domain]&.to_s,
-          "expire_after" => options[:expire_after]&.to_i
+          "expire_after" => options[:expire_after]&.to_i,
+          "cookie_format" => cookie_format(app)
         }
       end
 

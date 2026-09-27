@@ -96,6 +96,24 @@ class ViewsTest < Minitest::Test
             "app/controllers/storefront_controller.rb:6: return in an action that renders its template"
   end
 
+  # StorefrontController is on ActionController::Base, not
+  # ApplicationController: Ruby finds none of the latter's methods for it.
+  def test_a_controller_not_under_application_controller_inherits_nothing_from_it
+    helper = ->(source) { source.sub(/\nend\s*\z/, "\n\n  private\n\n  def amount = 7\nend\n") }
+    uses = ->(source) { source.sub("Product.available.order(:name)\n", "Product.available.order(:name).limit(amount)\n") }
+    app = changed("app/controllers/application_controller.rb" => helper, "app/controllers/storefront_controller.rb" => uses)
+    refused app, "app/controllers/storefront_controller.rb:7: amount in a controller"
+  end
+
+  # A helper the app defines replaces Action View's in every view.
+  def test_an_app_helper_of_the_same_name_is_refused
+    # Introspection reads what Rails mixes in, the alias included.
+    assert_equal({ "StorefrontController" => %w[stock_label stock_text] }, StoreHelper.manifest["view_helpers"])
+    app = changed { |m| m["view_helpers"]["StorefrontController"] << "link_to" }
+    error = assert_raises(Rutile::Build::Unsupported) { storefront(app) }
+    assert_match(%r{: link_to in a view, which app/helpers defines, isn't supported yet\z}, error.message)
+  end
+
   # `render :show, status:` names the action's template; `layout false` drops the layout.
   def test_explicit_renders_and_layouts
     render = ->(source) { source.sub("    @products = Product.available.order(:name)\n", "    render :show, status: :not_found\n") }

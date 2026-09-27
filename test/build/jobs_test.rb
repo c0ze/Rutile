@@ -46,13 +46,14 @@ class JobsTest < Minitest::Test
   def test_perform_later_enqueues_the_arguments_active_job_serializes
     rust = action("RestockJob.perform_later(Product.find(params[:id]), 2)\nhead :accepted")
     assert_rust_includes rust, "crate::jobs::restock_job::RESTOCK_JOB.perform_later(&crate::jobs::APP, vec![" \
-                               "rustonrails::jobs::record_argument(&req.ctx, &crate::jobs::APP, Some(product))?, Json::from(2)])?;"
+                               "rustonrails::jobs::record_argument::<Product>(&req.ctx, &crate::jobs::APP, Some(product))?, " \
+                               "{ let argument: i64 = 2; Json::from(argument) }])?;"
   end
 
   # Rails enqueues nil for a record; the job fails on it when it runs.
   def test_perform_later_passes_a_nilable_record
     rust = action("RestockJob.perform_later(Product.order(:id).first, 1)\nhead :accepted")
-    assert_rust_includes rust, "rustonrails::jobs::record_argument(&req.ctx, &crate::jobs::APP, product)?"
+    assert_rust_includes rust, "rustonrails::jobs::record_argument::<Product>(&req.ctx, &crate::jobs::APP, product)?"
   end
 
   def test_perform_now_runs_the_job_here
@@ -103,6 +104,37 @@ class JobsTest < Minitest::Test
     app = scratch_app({ "app/jobs/application_job.rb" => body }, manifest: StoreHelper.manifest, from: StoreHelper::APP)
     error = assert_raises(Rutile::Build::Unsupported) { job_file(app).to_rust }
     assert_equal "app/jobs/application_job.rb:2: discard_on in a class body isn't supported yet", error.message
+  end
+
+  # A perform inherited from ApplicationJob still runs the job's own
+  # callbacks in Rails, so the job's own file is checked too.
+  def test_the_jobs_own_file_is_checked_when_perform_is_inherited
+    manifest = JSON.parse(JSON.generate(StoreHelper.manifest))
+    manifest.dig("jobs", "classes").find { _1["name"] == "RestockJob" }["perform"]["path"] = "app/jobs/application_job.rb"
+    app = scratch_app({
+      "app/jobs/application_job.rb" => ->(source) { source.sub(/\nend\s*\z/, "\n  def perform = nil\nend\n") },
+      "app/jobs/restock_job.rb" => ->(source) { source.sub(/  #: .*\z/m, "  before_perform :stop\nend\n") }
+    }, manifest:, from: StoreHelper::APP)
+    error = assert_raises(Rutile::Build::Unsupported) { job_file(app).to_rust }
+    assert_match(%r{\Aapp/jobs/restock_job.rb:\d+: before_perform in a class body isn't supported yet\z}, error.message)
+  end
+
+  # nil and an Integer past i32 go into the payload as the types the
+  # signature declares, not as whatever Rust would infer for a literal.
+  def test_a_nil_record_argument_names_its_model
+    uses = Rutile::Build::Uses.new
+    controller = Rutile::Build::ApplicationControllerFile.new(store)
+    translator = Rutile::Build::Translator.new(store, "snippet.rb", uses, env: :controller, controller:)
+    rust = translator.body(Prism.parse("RestockJob.perform_later(nil, 2)\nhead :accepted").value.statements, :response).first.join("\n")
+    assert_rust_includes rust, "rustonrails::jobs::record_argument::<Product>(&req.ctx, &crate::jobs::APP, None)?"
+    assert_includes uses.lines("crate::models"), "Product"
+  end
+
+  def test_arguments_keep_their_declared_types
+    app = edited_job("  #: (String?, Integer) -> void\n  def perform(label, count) = nil\n")
+    rust = action("RestockJob.perform_later(nil, 3_000_000_000)\nhead :accepted", app)
+    assert_rust_includes rust, "{ let argument: Option<String> = None; Json::from(argument) }"
+    assert_rust_includes rust, "{ let argument: i64 = 3000000000; Json::from(argument) }"
   end
 
   def test_jobs_that_depend_on_their_environment_or_namespace_are_refused

@@ -19,6 +19,7 @@ module Rutile
 
       # These run without a controller instance.
       def path = PATH
+      def lookup_paths = [PATH]
 
       def ivar(name, _type, node) = raise(Unsupported.at(PATH, node, "@#{name} in ApplicationController"))
       def ivar_type(_name) = nil

@@ -57,7 +57,7 @@ module Rutile
       # Ruby's lookup order: this class's methods and readers, then
       # ApplicationController's.
       def reader?(name)
-        [@path, APPLICATION].each do |path|
+        lookup_paths.each do |path|
           return false if @app.source.defs(path).any? { _1.name.to_s == name }
           return true if readers(path).include?(name)
         end
@@ -114,6 +114,23 @@ module Rutile
       # A helper's rbs-inline signature, once `helper` has translated it.
       def signature(name) = @helpers[name]&.fetch(:signature, nil)
 
+      # Where Ruby looks for this controller's methods that Rutile compiles:
+      # its own file, then ApplicationController's if it inherits from it.
+      # A controller on ActionController::Base or ::API directly doesn't.
+      def lookup_paths
+        @lookup_paths ||= inherits?("ApplicationController") ? [@path, APPLICATION] : [@path]
+      end
+
+      def inherits?(name)
+        klass = @controller
+        while klass
+          return true if klass["superclass"] == name
+
+          klass = @app.controllers.find { _1["name"] == klass["superclass"] }
+        end
+        false
+      end
+
       private
 
       def translate_helper(name, node, path, tail)
@@ -158,7 +175,7 @@ module Rutile
       # Rust has no inheritance, so an inherited method is translated into
       # every controller that uses it.
       def definition(name)
-        [@path, APPLICATION].each do |path|
+        lookup_paths.each do |path|
           node = @app.source.defs(path).find { _1.name.to_s == name }
           return [node, path] if node
         end
@@ -197,7 +214,7 @@ module Rutile
         return forgery_filter(method) if html? && FORGERY.include?(method) && filter.dig("filter", "origin") == "framework"
         unsupported!("#{filter["kind"]}_action") unless filter["kind"] == "before"
         unsupported!("a before_action that isn't a method") unless method
-        unsupported!("before_action :#{method} from #{path || "outside the app"}") unless [@path, APPLICATION].include?(path)
+        unsupported!("before_action :#{method} from #{path || "outside the app"}") unless lookup_paths.include?(path)
 
         halts = renders?(definition(method)&.first)
         helper(method, nil, tail: halts ? :filter : :unit)

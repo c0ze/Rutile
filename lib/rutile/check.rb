@@ -36,12 +36,13 @@ module Rutile
       raise Build::Unsupported, diagnostics.problems.join("\n") unless diagnostics.problems.empty?
     end
 
-    # Each app model and controller's own file. ApplicationRecord is
-    # abstract, so the manifest's models leave it out; a patch to it changes
-    # every model all the same.
+    # Each app model, controller and job's own file. ApplicationRecord is
+    # abstract, so the manifest's models leave it out, and ApplicationJob
+    # performs nothing; a patch to either changes every class under it.
     def homes(app)
-      found = (app.models + app.controllers).to_h { [_1["name"], _1.dig("source", "path")] }.compact
+      found = (app.models + app.controllers + (app.manifest.dig("jobs", "classes") || [])).to_h { [_1["name"], _1.dig("source", "path")] }.compact
       found["ApplicationRecord"] ||= Build::Constants::PARENTS.fetch(:model)
+      found["ApplicationJob"] ||= "app/jobs/application_job.rb"
       found
     end
 

@@ -30,6 +30,7 @@ module Rutile
           "controllers" => Controllers.extract,
           "jobs" => Jobs.extract,
           "views" => Views.extract(app),
+          "view_helpers" => Views.helpers(app),
           "gems" => Gems.extract
         }
       end

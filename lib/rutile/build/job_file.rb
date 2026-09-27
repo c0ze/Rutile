@@ -22,8 +22,9 @@ module Rutile
       def to_rust
         raise Unsupported, "#{@path}: the namespaced job #{@name} isn't supported yet" if @name.include?("::")
 
-        # retry_on, discard_on, sidekiq_options and callbacks in ApplicationJob apply here too.
-        [@path, *@job["ancestors"]].uniq.each { Declarations.check(@app, _1, %w[queue_as]) }
+        # retry_on, discard_on, sidekiq_options and callbacks in ApplicationJob
+        # apply here too, and the job's own when its perform is inherited.
+        [@path, @job.dig("source", "path"), *@job["ancestors"]].compact.uniq.each { Declarations.check(@app, _1, %w[queue_as]) }
         if @job["queue_prefix"]
           raise Unsupported, "#{@path}: queue_name_prefix (#{@job["queue_prefix"]}), which Rails usually sets per environment, " \
                              "isn't supported yet"

@@ -35,6 +35,11 @@ class MiddlewareTest < Minitest::Test
                                       'same_site: Some("strict").map(str::to_string) })'
     refused configured { _1["session"]["expire_after"] = 3600 }, "the session cookie's expire_after: option"
     refused configured { _1["session"]["domain"] = "example.com" }, "the session cookie's domain: option"
+    # Cookies Rails writes another way, the runtime couldn't read.
+    refused configured { _1["session"]["cookie_format"]["serializer"] = "marshal" }, "the session cookie's serializer \"marshal\""
+    refused configured { _1["session"]["cookie_format"]["rotations"] = 1 }, "the session cookie's rotations 1"
+    refused configured { _1["session"]["cookie_format"]["key_digest"] = "OpenSSL::Digest::SHA1" },
+            "the session cookie's key digest \"OpenSSL::Digest::SHA1\""
     refused configured { _1["cookies_same_site"] = { "dynamic" => "Proc" } }, "cookies_same_site_protection decided per request"
     assert_rust_includes routes(configured { _1["cookies_same_site"] = "strict" }), '.cookies_same_site(Some("strict"))'
   end

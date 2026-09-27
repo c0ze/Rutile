@@ -27,6 +27,7 @@ module Rutile
         return nil unless session && session["store"] == "cookie"
 
         unsupported!("the session cookie's domain: option") if session["domain"]
+        cookie_format!(session["cookie_format"])
         unsupported!("the session cookie's expire_after: option") if session["expire_after"]
         own = session["same_site"] == "default" ? same_site : same_site(session["same_site"], "the session cookie's same_site:")
         return ".session_store(#{Names.str(session["key"])})" if session.slice("path", "secure", "httponly") ==
@@ -35,6 +36,23 @@ module Rutile
         @uses.rt("CookieOptions")
         ".session_store_with(#{Names.str(session["key"])}, CookieOptions { path: #{Names.str(session["path"])}, " \
           "secure: #{session["secure"]}, httponly: #{session["httponly"]}, same_site: #{own}.map(str::to_string) })"
+      end
+
+      # The runtime reads and writes Rails 8's session cookie: JSON,
+      # AES-256-GCM under the default salt, with purpose metadata. Rails set
+      # up otherwise writes cookies it couldn't read, or reads ones it can't.
+      DEFAULT_COOKIES = { "serializer" => "json", "authenticated_encryption" => true, "cipher" => nil,
+                          "salt" => "authenticated encrypted cookie", "metadata" => true, "rotations" => 0,
+                          "key_digest" => "OpenSSL::Digest::SHA256" }.freeze
+
+      def cookie_format!(format)
+        DEFAULT_COOKIES.each do |setting, default|
+          value = format&.fetch(setting, :missing)
+          next if value == default || (setting == "cipher" && value == "aes-256-gcm")
+
+          shown = value == :missing ? "unknown" : value.inspect
+          unsupported!("the session cookie's #{setting.tr("_", " ")} #{shown}")
+        end
       end
 
       def same_site(value, what)

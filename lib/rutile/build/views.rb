@@ -85,6 +85,8 @@ module Rutile
       # What a view calls on itself: Action View's helpers Rutile compiles.
       # A controller's own methods aren't the view's.
       def view_call(node, name, args)
+        # Rails calls the app's own helper of that name, which isn't compiled.
+        unsupported!(node, "#{name} in a view, which app/helpers defines,") if @app.view_helpers(@controller.name).include?(name)
         case name
         when "content_for", "provide" then content_for(node, name, args)
         when "content_for?" then Code["view.has_content_for(#{Names.str(symbol!(only(args, node), node))})", T::BOOL]

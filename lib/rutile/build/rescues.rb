@@ -68,7 +68,7 @@ module Rutile
 
       def handler_call(handler, method)
         path = handler.dig("handler", "source", "path")
-        unless [@path, ControllerFile::APPLICATION].include?(path)
+        unless lookup_paths.include?(path)
           unsupported!("rescue_from handled outside #{@name} and ApplicationController")
         end
         takes = Rescues.parameter(@app, path, @app.source.def_node(path, method))

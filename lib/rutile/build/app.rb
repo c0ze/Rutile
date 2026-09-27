@@ -109,6 +109,11 @@ module Rutile
       def controllers = manifest.fetch("controllers")
 
       # The Active Job classes, when Sidekiq runs them: what Rutile compiles.
+      # The view helpers the app defines for `controller`'s views, as Rails
+      # resolved them: calling one in a view calls the app's, which Rutile
+      # doesn't compile.
+      def view_helpers(controller) = manifest.fetch("view_helpers", {}).fetch(controller, [])
+
       def jobs = manifest.dig("jobs", "adapter") == "sidekiq" ? manifest.dig("jobs", "classes") : []
       def job(name) = jobs.find { _1["name"] == name }
       def controller(name) = controllers.find { _1["name"] == name } || raise(Error, "no controller #{name}")

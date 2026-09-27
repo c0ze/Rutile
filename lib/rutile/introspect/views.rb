@@ -16,6 +16,27 @@ module Rutile
         end
       end
 
+      # Per full-stack controller, the view helpers the app defines, as
+      # Rails mixes them into that controller's views, however they're
+      # defined (a def, attr_reader, under a condition, through send): a
+      # method whose code is the app's, or that an app module owns (an alias
+      # of Action View's keeps its code's location). A module nested in a
+      # helper but not included isn't among them.
+      def helpers(app)
+        return {} unless defined?(ActionController::Base)
+
+        root = "#{app.root}/"
+        mine = ->(file) { file&.start_with?(root) && Gem.path.none? { file.start_with?("#{_1}/") } }
+        ActionController::Base.descendants.select { Source.app_defined?(_1) }.sort_by(&:name).to_h do |controller|
+          helpers = controller._helpers
+          names = (helpers.instance_methods + helpers.private_instance_methods).select do |name|
+            method = helpers.instance_method(name)
+            mine.(method.source_location&.first) || Source.app_defined?(method.owner)
+          end
+          [controller.name, names.map(&:to_s).sort]
+        end
+      end
+
       # `storefront/index.html.erb`: the name `render` looks up, its format
       # and handler, and the compiled source for an ERB template.
       def describe(path, file, source)
