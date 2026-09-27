@@ -20,7 +20,7 @@ Prism parses every file under `app/` and `lib/`. A rule set rejects what can't c
 |---|---|
 | `eval`, `instance_eval` with a string, `class_eval` with a string | a method, or a block form the compiler understands |
 | `method_missing`, `respond_to_missing?` | explicit methods |
-| `send` / `public_send` with a computed name | `case` over the known names |
+| `send` / `public_send` with a computed name | an `if` over the known names |
 | reopening core classes (`class String`) | a helper module |
 | `define_method` at runtime | a literal list of methods, or a Rutile macro (later) |
 | class variables, mutable globals | a constant, `Rails.cache`, or the database |
@@ -28,7 +28,7 @@ Prism parses every file under `app/` and `lib/`. A rule set rejects what can't c
 
 `send(:literal_symbol)` is allowed and compiles to a direct call. Metaprogramming that Rails itself does at boot (`has_many`, `validates`, `enum`, `scope`, `before_action`) is fine, because introspection resolves it.
 
-`rutile check` runs these rules over every `.rb` file under `app/` and `lib/`, and then does three more things in the same pass:
+`rutile check` runs these rules over every `.rb` file under `app/`, `lib/` and `config/initializers/`, where a patch usually lives, and then does three more things in the same pass:
 
 - It runs the build with a collector attached, so every unit `rutile build` would refuse (a validator, a callback, a method, an action, a route, a class-level call) is reported and skipped instead of ending the run at the first one. A helper that can't compile is reported once; the actions calling it are skipped quietly.
 - It sorts the app's gems. Development and test gems are ignored, and so are the framework, the database driver, servers and deploy tools. Gems that change Rails at runtime (activeadmin, rails_admin, paper_trail, ransack, devise) are problems: use a Rails sidecar or a rewrite. Anything else is a note, since the build refuses any use of it the translator can't compile.
@@ -58,27 +58,31 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 
 - **From the manifest:** a `model!` struct per table (columns in database order, database defaults, enum columns holding labels), association constants with their automatic inverses, and the `Behavior` chain: validations in the order of the validate chain (so `belongs_to`'s required check and `enum ..., validate: true` sit where Rails runs them), then callbacks event by event in chain order, with `dependent: :destroy` and `:nullify` where Rails registered them. Controllers get a struct of their instance variables and a `Controller` impl from `wrap_parameters`, `before_action` (with `only:`/`except:`) and `rescue_from`. Routes come out in match order, constraint lambdas as functions.
 - **From the Ruby:** callback methods and blocks, scope lambdas, the model's own methods, `normalizes` lambdas, actions and the helpers they call, rescue handlers, route constraints. A translator gives every expression a static type (a record handle, a relation, loaded records, a list `map` built, a string, a param value, params, attributes, JSON, an errors object, or `Option` of one of these) and emits Rust as text.
-- **Model methods:** each becomes `Model::name(ctx, record)`, returning what its body ends on. They're translated once per build, so the model file emits them and any caller learns the return type. Every public method is compiled whether or not anything calls it, since `rutile check` has to report what the app could call. A private one is compiled when its record calls it, and only the record itself may. A model's method wins over a column or Rails method of the same name, as in Ruby.
+- **Model methods:** each becomes `Model::name(ctx, record)`, returning what its body ends on. They're translated once per build, so the model file emits them and any caller learns the return type. Every public method is compiled whether or not anything calls it, since `rutile check` has to report what the app could call. A private one is compiled when its record calls it, and only the record itself may. A model method that replaces a column reader, an association reader or one of Active Record's methods is refused, since Rust would call its own.
 - **Blocks:** `each`, `find_each`, `map`, `select`, `filter`, `reject` and `sum` over a relation load its records once (`find_each` a batch of 1000 at a time, by id) and run the block's body in a `for` loop; over an array they loop over its elements. A loop rather than a closure, so the body can borrow the `Ctx` mutably and use `?` exactly as the method around it does. A block names its element `|x|`, `it` or `_1`, or is a method name (`&:title`). Locals first assigned in the block stay in it, and `return` inside it is refused, since it would leave the method. `sum` follows `Array#sum`: Integers stay Integers (a nil element raises, as Ruby's TypeError does), a Float start adds each element in turn, and Floats from the default Integer 0 are refused, since an empty array keeps that 0.
 - **Calculations:** `count`, `sum`, `minimum`, `maximum`, `pluck` and `exists?` (with `any?`, `empty?`, `none?`) on a relation run Rails' SQL and are typed by the column: aggregates drop the order and keep the limit and offset, as Rails does; a count with a limit counts a subquery.
 - **Transactions:** `transaction do ... end` (on a model, `ApplicationRecord`, `ActiveRecord::Base`, or a model's own) compiles to a closure `Ctx::transaction_block` runs: the block's value, or nil after `raise ActiveRecord::Rollback`; any other error rolls back and goes on up. As in Active Record, a transaction inside another joins it.
 - **Borrowing:** the `Ctx` is one `&mut` value, so anything that reads or writes it is bound to a local before a call that borrows it mutably. Bindings follow Ruby's evaluation order (receiver before arguments, left to right) and each expression runs once: `@post.update(post_params)` names the unwrapped record and the attributes once, assigns, then saves.
-- **Nil:** an association that can be nil and an instance variable a filter may not have set are `Option`. Calling a method on one is `Error::Nil`, which Rails would raise as NoMethodError (a 500); `&.` becomes `map`/`is_some_and`; `||=` assigns only when the attribute is nil; `render json:` of nil renders `null`.
+- **Nil:** an association that can be nil and an instance variable a filter may not have set are `Option`. Calling a method on one is `Error::Nil`, which Rails would raise as NoMethodError (a 500); `&.` becomes `map`/`is_some_and`; `self.attribute ||= value` assigns when the attribute is nil, or false for a boolean; `render json:` of nil renders `null`.
 - **The gate:** rustfmt, then `cargo check`, and a warning counts as a failure. A generated crate that doesn't compile is a Rutile bug.
 - **Records compare as Active Record does:** `==` between records is `Ctx::same_record`, the same id, since the same row loaded twice is two handles. A Symbol never equals a String, so comparing one with the other is refused.
+- **Sessions and cookies (0.10):** `session[:key]`, `session[:key] = value`, `session.delete`, `reset_session` and plain `cookies[:name]` compile against Rails' cookie store, read and written the way Rails 8 does (AES-256-GCM under `SECRET_KEY_BASE`, JSON, purpose metadata), so a Rails process and the binary read each other's sessions. A value written keeps its class until the request ends; only the cookie's JSON makes a Time a String, as in Rails. The store's options (`key`, `path`, `secure`, `httponly`, `same_site`) come from introspection; another store, `expire_after:`, `domain:`, signed or encrypted jars, `flash`, and a cookie format other than Rails 8's default (serializer, cipher, salt, metadata, rotations, key digest) are refused.
+- **Jobs (0.10):** an Active Job class on the Sidekiq adapter becomes `src/jobs/<job>.rs`. `perform_later` pushes the payload Sidekiq's adapter would (records by GlobalID, arguments typed by `perform`'s signature), so Ruby and Rust workers share a queue; `perform_now` calls the job's `run` in place. The binary works jobs with `<app> work [--once]`, with Sidekiq's retries, backoff and dead set. Callbacks, `retry_on`, `discard_on`, other adapters, namespaced jobs and `queue_name_prefix` are refused.
+- **Views (0.10):** an ERB template is translated from the Ruby Rails' own ERB handler compiles it to, so trimming and escaping are Rails', then run inside its layout. `content_for`, `provide`, `link_to`, `raw` and route `_path` helpers compile; a helper the app defines (as Rails resolved them at introspection) is refused, as are partials, form helpers and other Action View helpers. A full-stack controller renders HTML to a request that takes it. To one that asks for JSON, an action rendering its own template implicitly answers 406 (`UnknownFormat`), and an explicit `render :show` 500 (`MissingTemplate`), as Rails does.
+- **Middleware (0.10):** routes carry what Rails' middleware does around them: the cookie store, `cookies_same_site_protection`, `force_ssl` behind `assume_ssl` (HSTS and secure cookies), the default headers, and the exceptions app, which answers an error with JSON to a JSON request and with `public/<status>.html` otherwise.
 - **Everything else** raises `Unsupported` with the file and line: calls the translator doesn't know, `around_*` callbacks, calling a `before_action` that renders from another method (its response would be lost), route requirements and `via: :all`, validator options beyond the common ones, scope parameters it can't type, code beside the class in a model or controller file. So does anything that would compile and behave differently: single-table inheritance, optimistic locking, defaults the model sets (`enum ..., default:`), a time zone other than UTC, a locale other than `en` or reworded validation messages.
 
 `rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` when it's missing; after that it only moves the path to the runtime when `--runtime` changes, so a crate's own tests and dependencies survive a rebuild. The example crates live in `RustOnRails/examples/`; the blog's tests are hand-written.
 
 ### 4. Verify
 
-The app's own integration tests run against the binary. With `RUTILE_TARGET` set, the test helper installs `Rutile::Verify::Target` as the integration session's app: a Rack app that forwards each request to the Rust server and hands back its status, content type and body, so the tests' own assertions are the check. Fixtures and the Rust server share one database, which needs three adjustments:
+The app's own integration tests run against the binary. With `RUTILE_TARGET` set, `Rutile::Verify::Target` becomes the integration session's app: a Rack app that forwards each request to the Rust server and hands back its status, every header but the connection's (each `Set-Cookie` its own) and body, so the tests' own assertions are the check. Fixtures and the Rust server share one database, which needs these adjustments:
 
-- Transactional tests are off, since the server can't see rows inside the test's open transaction.
+- Transactional tests are off, since the server can't see rows inside the test's open transaction. Rails then reloads the fixtures before each test, into tables verify has emptied, so a table no fixture file fills doesn't keep earlier tests' rows.
 - The query cache is cleared after every forwarded request. The test process turns the cache on around each test, and without clearing it, `assert_difference` reads its stale count.
 - The target exposes `Rails.application.routes`, which is what gives the tests their `*_path` helpers.
 
-Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. The target forwards every header the test sets except the connection's own, so an API token in a header reaches the Rust server. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. For the tracker (`EXAMPLE=tracker`) all 24 do. This is what makes the output trustworthy, so it was built before codegen. Since 0.9.0 it's `rutile verify APP --crate DIR`: a hook loaded through `RUBYOPT` installs the target once `rails/test_help` loads, so the app's test helper needs no change, and verify fails if no request reached the binary.
+Assertions about Rails internals, such as `controller.action_name`, have no Rust equivalent and are skipped under `RUTILE_TARGET`. The target forwards every header the test sets except the connection's own, so an API token in a header reaches the Rust server. For the blog, `bundle exec rake example:verify` builds the port, starts it and runs the integration tests; all 17 pass. For the tracker (`EXAMPLE=tracker`) all 24 do, and for the store (`EXAMPLE=store`) all 33, sessions, jobs and pages included. This is what makes the output trustworthy, so it was built before codegen. Since 0.9.0 it's `rutile verify APP --crate DIR`: a hook loaded through `RUBYOPT` installs the target once `rails/test_help` loads, so the app's test helper needs no change, and verify fails if no request reached the binary.
 
 ## Types
 
@@ -95,21 +99,21 @@ Four layers, cheapest first.
 
 ### Ruby semantics that need care
 
-| Ruby | Rust | Note |
-|---|---|---|
-| `Integer` | `i64`, checked arithmetic | Ruby promotes to bignum on overflow; we fail loudly instead of wrapping |
-| `Float`, `BigDecimal` | `f64`, `rust_decimal::Decimal` | decimal columns map to `Decimal` |
-| `String` | `String` | UTF-8 only; binary data is `Vec<u8>` |
-| `Symbol` | enum when the set is known, interned string otherwise | enum columns and `status:` style options are known sets |
-| `Hash` | `IndexMap` | Ruby hashes keep insertion order |
-| `nil` | `Option<T>` | |
-| truthiness | explicit checks | only `nil` and `false` are falsy; `0` and `""` are true |
-| `&.` | `Option` combinators | |
-| `@x ||= ...` | `OnceCell` / `Option::get_or_insert_with` | |
-| blocks, `yield` | closures, generic `impl FnMut` | |
-| exceptions | `Result` with `?` inserted | `rescue` becomes a `match`; `rescue_from` maps errors to responses |
-| duck typing | a trait per method set, or an enum of known classes | |
-| `params` | struct generated from `permit(...)` | nested permits generate nested structs |
+| Ruby | Rust | Note | Today |
+|---|---|---|---|
+| `Integer` | `i64`, checked arithmetic | Ruby promotes to bignum on overflow; we fail loudly instead of wrapping | as planned: overflow panics, the server's 500, in release too when the crate's `Cargo.toml` Rutile wrote sets `overflow-checks` (a new crate outside a Cargo workspace; in one, the root's profile decides) |
+| `Float`, `BigDecimal` | `f64`, `rust_decimal::Decimal` | decimal columns map to `Decimal` | `f64`; decimal, json and uuid columns are refused |
+| `String` | `String` | UTF-8 only; binary data is `Vec<u8>` | as planned; binary columns are refused |
+| `Symbol` | enum when the set is known, interned string otherwise | enum columns and `status:` style options are known sets | a string that remembers it was a Symbol, so comparing it with a String is refused |
+| `Hash` | `IndexMap` | Ruby hashes keep insertion order | only as a literal rendered as JSON or merged into `as_json` |
+| `nil` | `Option<T>` | | as planned |
+| truthiness | explicit checks | only `nil` and `false` are falsy; `0` and `""` are true | as planned |
+| `&.` | `Option` combinators | | as planned |
+| `@x ||= ...` | `OnceCell` / `Option::get_or_insert_with` | | only `self.attr ||= value` in a model |
+| blocks, `yield` | closures, generic `impl FnMut` | | blocks over records and arrays compile as loops; an ERB layout's `yield` and `yield :name` compile; `yield` elsewhere and methods taking blocks are refused |
+| exceptions | `Result` with `?` inserted | `rescue` becomes a `match`; `rescue_from` maps errors to responses | `rescue_from` and `raise ActiveRecord::Rollback`; `begin/rescue` in app code is refused |
+| duck typing | a trait per method set, or an enum of known classes | | a `Value` for scalars whose class varies; records must have one static class |
+| `params` | struct generated from `permit(...)` | nested permits generate nested structs | `Attributes` of the permitted scalar keys; nested permits are refused |
 
 ## Gems
 

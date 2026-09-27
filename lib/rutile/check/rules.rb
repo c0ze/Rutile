@@ -188,7 +188,7 @@ module Rutile
           report(node, "#{node.name} with a string", "a method, or a block form the compiler understands") unless args.empty?
         when *SENDS
           named = args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode)
-          report(node, "#{node.name} with a computed name", "a case over the known names") unless named
+          report(node, "#{node.name} with a computed name", "an if over the known names") unless named
         when :define_method, :define_singleton_method then report(node, node.name.to_s, "a literal list of methods")
         end
         super

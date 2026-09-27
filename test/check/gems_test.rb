@@ -12,7 +12,8 @@ class GemsTest < Minitest::Test
 
   def test_gems_by_what_compiling_means_for_them
     gems = [{ "name" => "rails", "groups" => %w[default] }, { "name" => "debug", "groups" => %w[development test] },
-            { "name" => "devise", "groups" => %w[default] }, { "name" => "faraday", "groups" => %w[default] }]
+            { "name" => "devise", "groups" => %w[default] }, { "name" => "faraday", "groups" => %w[default] },
+            { "name" => "sidekiq", "groups" => %w[default] }]
     problems, notes = diagnose { Rutile::Check::Gems.check({ "gems" => gems }, _1) }
     assert_equal ["Gemfile: devise changes Rails at runtime and can't be compiled; use a Rails sidecar for what needs it, or a rewrite"],
                  problems
@@ -26,13 +27,13 @@ class GemsTest < Minitest::Test
 
   def test_app_files_rutile_does_not_compile
     Dir.mktmpdir do |root|
-      %w[app/models/post.rb app/controllers/posts_controller.rb app/jobs/cleanup_job.rb app/models/concerns/taggable.rb].each do
+      %w[app/models/post.rb app/controllers/posts_controller.rb app/jobs/cleanup_job.rb app/services/cleanup.rb app/models/concerns/taggable.rb].each do
         FileUtils.mkdir_p(File.dirname(File.join(root, _1)))
         File.write(File.join(root, _1), "")
       end
       _, notes = diagnose { Rutile::Check::Files.check(root, _1) }
-      assert_equal %w[app/jobs/cleanup_job.rb app/models/concerns/taggable.rb].map {
-        "#{_1}: not compiled; Rutile compiles app/models, app/controllers and config/routes.rb"
+      assert_equal %w[app/models/concerns/taggable.rb app/services/cleanup.rb].map {
+        "#{_1}: not compiled; Rutile compiles app/models, app/controllers, app/jobs, app/views and config/routes.rb"
       }, notes
     end
   end

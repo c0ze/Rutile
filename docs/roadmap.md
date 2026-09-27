@@ -4,7 +4,7 @@ Rutile and RustOnRails version together: each milestone below is one minor versi
 
 ## Where things stand (0.10.0)
 
-Three example apps compile and pass their own Rails integration tests as Rust binaries: the blog (17 tests), the tracker (24 tests), an ordinary Rails 8 API whose `app/` code compiled unchanged, and the store (33 tests), which grows with each milestone. On a 4-core machine the Rust builds serve 33 to 55 times the requests per second of one Puma process with YJIT, and 6 to 8 times a Puma cluster on every core ([benchmarks.md](benchmarks.md)).
+Three example apps compile and pass their own Rails integration tests as Rust binaries: the blog (17 tests), the tracker (24 tests), an ordinary Rails 8 API whose `app/` code compiled unchanged, and the store (33 tests), which grows with each milestone. On an Apple M4 the Rust builds serve 19 to 32 times the requests per second of one Puma process with YJIT on all but an aggregate-heavy endpoint (13 times), and 5 to 9 times a Puma cluster on every core on most (2.9 to 18 times overall); on a 4-vCPU Linux VM, 33 to 55 and 6 to 8 times ([benchmarks.md](benchmarks.md)).
 
 Against the design:
 

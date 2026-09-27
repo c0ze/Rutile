@@ -1,15 +1,65 @@
 # Benchmarks
 
-Both example apps on Rails and on the Rust crates `rutile build` makes of them, on the same database and rows. Before anything is measured, the task checks that every endpoint gives the same status and byte-for-byte the same body from both servers. Run it with:
+The three example apps on Rails and on the Rust crates `rutile build` makes of them, on the same database and rows. Before anything is measured, the task checks that every endpoint gives the same status and byte-for-byte the same body from both servers. Run it with:
 
 ```bash
 bundle exec rake example:benchmark                  # the blog, one Puma process with YJIT
 EXAMPLE=tracker RUNS=3 bundle exec rake example:benchmark
-RAILS_WORKERS=4 bundle exec rake example:benchmark  # Puma in cluster mode
+EXAMPLE=store RAILS_WORKERS=10 bundle exec rake example:benchmark  # Puma in cluster mode
 RAILS_YJIT=0 bundle exec rake example:benchmark     # Rails on the interpreter
 ```
 
-## 2026-09-25, blog and tracker, three Rails setups (median of 3 runs)
+## 2026-09-28, blog, tracker and store on an Apple M4 (median of 3 runs)
+
+Requests per second. Each Rails setup ran against a Rust server started in the same run, so each ratio compares two servers under the same conditions:
+
+| App | Endpoint | Rails, 1 process | Rust | ratio | Rails, 10 processes | Rust | ratio |
+|---|---|---:|---:|---:|---:|---:|---:|
+| blog | `GET /posts` | 656 | 19,449 | 29.6 | 2,629 | 12,316 | 4.7 |
+| blog | `GET /posts/:id` | 2,622 | 52,494 | 20.0 | 8,951 | 48,016 | 5.4 |
+| tracker | `GET /projects` | 820 | 18,959 | 23.1 | 2,380 | 20,985 | 8.8 |
+| tracker | `GET /projects/:id` | 599 | 13,717 | 22.9 | 1,825 | 14,128 | 7.7 |
+| tracker | `GET /projects/:id/tasks` | 364 | 10,872 | 29.9 | 415 | 7,594 | 18.3 |
+| tracker | `GET /tasks/:id` | 1,599 | 30,117 | 18.8 | 3,815 | 22,854 | 6.0 |
+| store | `GET /products` | 923 | 25,073 | 27.2 | 3,184 | 24,208 | 7.6 |
+| store | `GET /products/:id` | 2,377 | 52,984 | 22.3 | 10,956 | 52,622 | 4.8 |
+| store | `GET /products/stats` | 501 | 6,734 | 13.4 | 2,416 | 7,010 | 2.9 |
+| store | `GET /shop` (HTML) | 702 | 22,404 | 31.9 | 4,146 | 22,861 | 5.5 |
+| store | `GET /shop/:id` (HTML) | 889 | 19,324 | 21.7 | 3,922 | 20,462 | 5.2 |
+| store | `GET /cart` (session) | 2,954 | 85,002 | 28.8 | 12,198 | 95,092 | 7.8 |
+
+Against one Puma process with YJIT, the setup Rails 8 gives you, the Rust build serves 19 to 32 times the requests on every endpoint but one. Against a Puma cluster with one process per core, it serves 5 to 9 times as many on most (4.7 on the blog's index), and 18 times on the tracker's task list, where Rails spends its time in Ruby: 50 records, each merged with a computed field. `/products/stats` is the exception on both counts, at 13 and 2.9 times: it runs twelve queries a request (`count`, `sum`, `minimum`, `maximum`, `pluck`, `exists?`, `none?` and `first`), so Postgres does most of the work for either server.
+
+The store's pages are the 0.10 features under load: `/shop` and `/shop/:id` render ERB templates in a layout, byte for byte what Action View sends, and `/cart` decrypts a session cookie Rails wrote (the task adds a product to a cart on Rails first, then sends that cookie with every `/cart` request to both servers, which share the secret).
+
+Latency, p50 / p99:
+
+| App | Endpoint | Rails, 1 process | Rails, 10 processes | Rust |
+|---|---|---:|---:|---:|
+| blog | `GET /posts` | 14.44 / 24.20 ms | 3.36 / 13.81 ms | 0.49 / 0.85 ms |
+| blog | `GET /posts/:id` | 3.61 / 7.68 ms | 0.90 / 4.05 ms | 0.18 / 0.37 ms |
+| tracker | `GET /projects` | 10.08 / 35.66 ms | 3.53 / 15.56 ms | 0.50 / 0.94 ms |
+| tracker | `GET /projects/:id` | 16.33 / 24.86 ms | 4.88 / 19.70 ms | 0.67 / 1.64 ms |
+| tracker | `GET /projects/:id/tasks` | 26.99 / 38.40 ms | 17.94 / 131.54 ms | 0.88 / 1.49 ms |
+| tracker | `GET /tasks/:id` | 6.05 / 10.31 ms | 2.21 / 9.90 ms | 0.32 / 0.50 ms |
+| store | `GET /products` | 10.22 / 19.98 ms | 2.72 / 11.68 ms | 0.38 / 0.76 ms |
+| store | `GET /products/:id` | 3.57 / 15.04 ms | 0.79 / 3.29 ms | 0.18 / 0.35 ms |
+| store | `GET /products/stats` | 17.85 / 50.89 ms | 3.70 / 11.50 ms | 1.42 / 2.41 ms |
+| store | `GET /shop` | 12.74 / 36.48 ms | 2.28 / 6.62 ms | 0.41 / 0.94 ms |
+| store | `GET /shop/:id` | 9.39 / 33.33 ms | 2.14 / 10.16 ms | 0.48 / 1.08 ms |
+| store | `GET /cart` | 3.14 / 7.86 ms | 0.68 / 3.84 ms | 0.11 / 0.28 ms |
+
+The Rust column is from the single-process runs. Memory: one Puma process 102 to 117 MiB, the Rust server 9 to 12 MiB. macOS reports resident size, not proportional size, so the cluster's figure (842 to 1,012 MiB) counts pages its ten forked workers share ten times; Linux's proportional figure would be lower.
+
+Setup:
+
+- Machine: an Apple M4 (4 performance and 6 efficiency cores), 32 GiB, macOS 27. It was a desktop in use, not an idle server: the load average was between 3.8 and 15 during the runs. Postgres, both servers and the load generator all run on it, so every run has both servers competing with the others for the same cores.
+- Postgres 16.15 on the repo's local cluster, each app's test database holding its fixtures plus the benchmark's rows: 100 posts for the blog; 40 projects and a 50-task project for the tracker; 40 products for the store.
+- Rails 8.1.4 on Ruby 3.4.9 with YJIT, `RAILS_ENV=benchmark` (production settings, SSL off, log level `warn`). Puma 8.0.2 with 5 threads per process: one process, or 10 in cluster mode (with `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`, which macOS needs for a forking server).
+- Rust 1.98.1, the examples' crates as `rutile build` generates them, release build, 5 worker threads with one connection each.
+- Load: `tools/loadgen`, 10 keep-alive connections, `Accept: text/html` for the store's pages and JSON otherwise. Each endpoint gets a 3-second warm-up, then 3 runs of 10 seconds; the tables give the median run. The store was run again with its session cookie after the first set, which measured `/cart` without one; the table gives the second. The tracker's cluster set was run twice: in the first, the load average reached 15 and Rust's `/tasks/:id` fell to 5,332 req/s with a 12.6 ms p99, so the table gives the second, at a load around 10.
+
+## 2026-09-25, blog and tracker on a 4-vCPU Linux VM, three Rails setups (median of 3 runs)
 
 Requests per second:
 
@@ -116,7 +166,7 @@ Setup:
 
 ## Caveats
 
-- The three earlier sections ran on a Ruby built without YJIT, one Puma process, and a different machine (the 8-core desktop). The first section adds both on this machine: YJIT raises Rails' throughput 1.5 to 1.7 times, and cluster mode on 4 cores another 5 to 8 times.
+- Each section ran on a different machine, so compare ratios across sections, not absolute numbers. The three oldest ran on a Ruby built without YJIT, one Puma process, on an 8-core Linux desktop. The 4-vCPU VM section adds both: YJIT raises Rails' throughput 1.5 to 1.7 times, and cluster mode on 4 cores another 5 to 8 times. On the M4, the Rust build's lead over one Puma process with YJIT (19 to 32 times) is below the VM's (33 to 55 times): Rails gained more from the faster machine than Rust did (the blog's index ran at 2.0 times its VM figure on Rails, 1.3 times on Rust). Against a cluster on every core it's about the same (5 to 9 times).
 - One Puma process is bound by the GVL, and its 5 threads mostly help while a request waits on Postgres. Cluster mode forks one process per core, which raises Rails' memory with its throughput.
 - Small tables on a local Postgres, with the load generator competing for the same CPU. Numbers on a real network and a real dataset will differ for both servers.
 

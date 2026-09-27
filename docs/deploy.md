@@ -6,22 +6,25 @@ Since 0.9.0 an app goes from Ruby to a container image with `rutile` commands al
 
 ```
 $ rutile check examples/store --env test
+note: app/controllers/carts_controller.rb:12: == falls back to Value
 note: app/controllers/products_controller.rb:84: * falls back to Value
+note: app/helpers/storefront_helper.rb: not compiled; Rutile compiles app/models, app/controllers, app/jobs, app/views and config/routes.rb
 note: app/models/product.rb:24: the value, str, int or nil, falls back to Value
 note: app/models/product.rb:29: untyped in the signature of tag_with falls back to Value
-no problems, 3 notes
+no problems, 5 notes
 ```
 
-`check` boots the app in the given environment (development by default), so that environment's database must exist. Problems are what `build` would refuse. Notes are the places the build falls back to `Value`, where a signature would make the code faster.
+`check` boots the app in the given environment (development by default), so that environment's database must exist. Problems are what `build` would refuse. Notes are the places the build falls back to `Value`, where a signature would make the code faster, and app files Rutile doesn't compile (the store's helper is there so introspection has one to find; no template calls it).
 
 ## 2. Build
 
 ```
 $ rutile build examples/store --env test --out ../store-crate --runtime ../RustOnRails
+app/controllers/carts_controller.rb:12: == falls back to Value
 app/controllers/products_controller.rb:84: * falls back to Value
 app/models/product.rb:24: the value, str, int or nil, falls back to Value
 app/models/product.rb:29: untyped in the signature of tag_with falls back to Value
-wrote ../store-crate (3 Value fallbacks)
+wrote ../store-crate (4 Value fallbacks)
 ```
 
 The crate depends on the RustOnRails checkout by path. `build` formats it and runs `cargo check`, which must pass without a warning.
@@ -55,10 +58,10 @@ binary: ../store-package/target/release/store
 image: store:0.9.0
 ```
 
-The package directory builds on its own and offline, which suits air-gapped CI and reproducible images. It holds:
+`package` prints the paths it resolved, which are absolute; they're shortened here. The package directory builds on its own and offline, which suits air-gapped CI and reproducible images. It holds:
 
 - the crate's `src`;
-- RustOnRails at the version the crate was built against, in `vendor/rustonrails`, with its `Cargo.lock`;
+- the RustOnRails checkout `--runtime` names, in `vendor/rustonrails`, and its `Cargo.lock` when the package has none yet. `package` doesn't check it against the one `rutile build` used, so point it at the same checkout;
 - every crate they use, from `cargo vendor`, in `vendor/crates`, with `.cargo/config.toml` pointing Cargo at them;
 - a two-stage `Dockerfile`.
 
@@ -67,13 +70,14 @@ The package directory builds on its own and offline, which suits air-gapped CI a
 ## 5. Run
 
 ```
-$ docker run --network host -e DATABASE_URL=postgres://postgres@localhost:54329/store_test -e BIND=127.0.0.1:54502 store:0.9.0
+$ export SECRET_KEY_BASE=$(cd examples/store && bin/rails runner 'puts Rails.application.secret_key_base')
+$ docker run --network host -e DATABASE_URL=postgres://postgres@localhost:54329/store_test -e BIND=127.0.0.1:54502 -e SECRET_KEY_BASE store:0.9.0
 store listening on 127.0.0.1:54502
 $ curl -s localhost:54502/products/stats
 {"count":3,"active":2,"units":7,"cheapest_cents":800,"priciest_cents":4200,...}
 ```
 
-The binary reads these environment variables:
+Since 0.10 the store keeps a cart in Rails' session cookie, so the binary needs the Rails app's `SECRET_KEY_BASE` and stops at start without it. The binary reads these environment variables:
 
 - `DATABASE_URL`, which is required;
 - `BIND`, which defaults to `0.0.0.0:3000` in the image;
@@ -103,7 +107,7 @@ plugins:
 The cop, `Rutile/Subset`, runs the same rules as `rutile check`, with the same messages, on `app/` and `lib/`:
 
 ```
-app/models/thing.rb:5:5: C: Rutile/Subset: send with a computed name can't be compiled; use a case over the known names.
+app/models/thing.rb:5:5: C: Rutile/Subset: send with a computed name can't be compiled; use an if over the known names.
     send("#{field}=", value)
     ^^^^^^^^^^^^^^^^^^^^^^^^
 ```

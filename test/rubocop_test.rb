@@ -43,7 +43,7 @@ class RubocopTest < Minitest::Test
   def test_the_plugin_reports_what_check_rejects
     cop = "Rutile/Subset"
     assert_equal [["app/models/thing.rb", cop, 2, 3, "the class variable @@count can't be compiled; use a constant, Rails.cache, or the database."],
-                  ["app/models/thing.rb", cop, 5, 5, "send with a computed name can't be compiled; use a case over the known names."],
+                  ["app/models/thing.rb", cop, 5, 5, "send with a computed name can't be compiled; use an if over the known names."],
                   ["app/models/thing.rb", cop, 8, 3, "def method_missing can't be compiled; use explicit methods."]],
                  offenses("rutile")
   end

@@ -52,7 +52,7 @@ class RulesTest < Minitest::Test
       "app/models/magic.rb:2: the class variable @@count can't be compiled; use a constant, Rails.cache, or the database",
       "app/models/magic.rb:3: def method_missing can't be compiled; use explicit methods",
       "app/models/magic.rb:4: def respond_to_missing? can't be compiled; use explicit methods",
-      "app/models/magic.rb:5: public_send with a computed name can't be compiled; use a case over the known names",
+      "app/models/magic.rb:5: public_send with a computed name can't be compiled; use an if over the known names",
       "app/models/magic.rb:6: eval can't be compiled; use a method, or a block form the compiler understands",
       "app/models/magic.rb:7: class_eval with a string can't be compiled; use a method, or a block form the compiler understands",
       "app/models/magic.rb:8: define_method can't be compiled; use a literal list of methods",

@@ -6,6 +6,9 @@ module Rutile
       # They never reach compiled code: the framework, the database driver,
       # servers, deployment and asset tooling.
       NEUTRAL = %w[rails pg puma bootsnap tzinfo-data thruster kamal propshaft].freeze
+      # What the runtime does itself: Active Job on Sidekiq compiles, and
+      # the binary speaks Sidekiq's protocol.
+      SUPPORTED = %w[sidekiq].freeze
       # They change Rails at runtime, so nothing of theirs can be compiled.
       SIDECAR = %w[activeadmin rails_admin paper_trail ransack devise].freeze
 
@@ -20,7 +23,7 @@ module Rutile
 
         gems.each do |gem|
           name = gem["name"]
-          next if (gem["groups"] - %w[development test]).empty? || NEUTRAL.include?(name)
+          next if (gem["groups"] - %w[development test]).empty? || (NEUTRAL + SUPPORTED).include?(name)
 
           if SIDECAR.include?(name)
             diagnostics.problem("Gemfile: #{name} changes Rails at runtime and can't be compiled; " \
