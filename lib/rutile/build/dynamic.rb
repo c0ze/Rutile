@@ -37,6 +37,8 @@ module Rutile
 
         @uses.rt("Value")
         return Code["Value::Nil", T::VALUE] if code.type == T::NIL
+        # Value::from would leave an unsuffixed literal to Rust's i32.
+        return Code["Value::Int(#{code.rust})", T::VALUE, code.ctx, hint: code.hint] if code.type == T::INT
 
         Code["Value::from(#{owned(code, code.type)})", T::VALUE, code.ctx, hint: code.hint]
       end

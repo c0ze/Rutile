@@ -40,4 +40,26 @@ class PackageTest < Minitest::Test
       assert_includes error.message, "no package name"
     end
   end
+
+  # Packaging replaces src/ and Cargo.toml in --out, so --out can't be
+  # the crate, the runtime, or a directory packaging didn't write.
+  def test_it_never_replaces_what_it_did_not_write
+    Dir.mktmpdir do |dir|
+      crate = File.join(dir, "crate")
+      runtime = File.join(dir, "runtime")
+      [crate, runtime].each { FileUtils.mkdir_p(File.join(_1, "src")) }
+      File.write(File.join(crate, "Cargo.toml"), "[package]\nname = \"blog\"\n")
+      File.write(File.join(runtime, "Cargo.toml"), "[package]\nname = \"rustonrails\"\n")
+      [runtime, crate, File.join(crate, "out")].each do |out|
+        error = assert_raises(Rutile::Package::Error) { Rutile::Package.run(crate:, runtime:, out:) }
+        assert_includes error.message, "overlaps"
+      end
+      other = File.join(dir, "other")
+      FileUtils.mkdir_p(other)
+      File.write(File.join(other, "Cargo.toml"), "[package]\nname = \"mine\"\n")
+      error = assert_raises(Rutile::Package::Error) { Rutile::Package.run(crate:, runtime:, out: other) }
+      assert_equal "#{other} wasn't written by rutile package; refusing to replace it", error.message
+      assert File.exist?(File.join(runtime, "src")) && File.exist?(File.join(other, "Cargo.toml"))
+    end
+  end
 end

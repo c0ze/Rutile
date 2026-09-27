@@ -69,8 +69,11 @@ module Rutile
       def batch_size(node)
         return 1000 unless node.arguments
 
-        (key, value), = pairs(node.arguments.arguments, node)
-        unless key == "batch_size" && value.is_a?(Prism::IntegerNode) && value.value.between?(1, 2**63 - 1) && node.arguments.arguments.size == 1
+        options = pairs(node.arguments.arguments, node)
+        key, value = options.first
+        # Every keyword, not the one hash they arrive in: start: or finish:
+        # would narrow the rows Ruby walks.
+        unless options.size == 1 && key == "batch_size" && value.is_a?(Prism::IntegerNode) && value.value.between?(1, 2**63 - 1)
           unsupported!(node, "find_each with options other than batch_size: a positive Integer")
         end
         value.value

@@ -69,7 +69,7 @@ module Rutile
             codes.each_index.select { stale?(codes[_1], assigns) }.each_with_index do |i, n|
               name = fresh(codes[i].hint || "value")
               @lines.insert(mark + n, "let #{name} = #{codes[i].rust};")
-              codes[i] = Code[name, codes[i].type, hint: codes[i].hint]
+              codes[i] = Code[name, codes[i].type, hint: codes[i].hint, symbol: codes[i].extra[:symbol]]
             end
           end
           codes << code

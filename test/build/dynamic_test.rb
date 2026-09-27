@@ -32,14 +32,32 @@ class DynamicTest < Minitest::Test
       render json: { doubled: value * 2, sum: value + 1, big: value > 10, same: value == "x", none: value == nil, text: "got \#{value}" }
     RUBY
     assert_rust_includes rust, 'let value = req.params.value("value")?;'
-    assert_rust_includes rust, '"doubled": value_json(value.mul(&Value::from(2))?)'
-    assert_rust_includes rust, '"sum": value_json(value.add(&Value::from(1))?)'
-    assert_rust_includes rust, '"big": value.compare(">", &Value::from(10))?'
+    assert_rust_includes rust, '"doubled": value_json(value.mul(&Value::Int(2))?)'
+    assert_rust_includes rust, '"sum": value_json(value.add(&Value::Int(1))?)'
+    assert_rust_includes rust, '"big": value.compare(">", &Value::Int(10))?'
     assert_rust_includes rust, '"same": value.equals(&Value::from("x".to_string()))'
     assert_rust_includes rust, '"none": value.is_nil()'
     assert_rust_includes rust, '"text": format!("got {}", value.to_s())'
     assert_equal ["snippet.rb:2: * falls back to Value", "snippet.rb:2: + falls back to Value", "snippet.rb:2: == falls back to Value",
                   "snippet.rb:2: > falls back to Value"], fallbacks
+  end
+
+  # Past i32: the literal must be an i64 before Value::from picks a type.
+  def test_a_large_integer_as_a_value
+    assert_rust_includes action("render json: { same: params[:n] == 2147483648 }"), "Value::Int(2147483648)"
+  end
+
+  # A transaction's Value is nil after a Rollback, and false and nil are
+  # falsy either way.
+  def test_the_truth_of_a_transactions_value
+    rust = action("v = Product.transaction { params[:missing] }\nrender json: { truthy: v ? true : false }")
+    assert_rust_includes rust, '.unwrap_or(Value::Nil);'
+    assert_rust_includes rust, "if v.is_truthy() { true } else { false }"
+  end
+
+  # A Symbol made a local before a call that runs first stays a Symbol.
+  def test_a_symbol_bound_early_is_still_a_symbol
+    refused("1: == between a string and a symbol", "render json: { allowed: :admin? == Product.find(1).name }")
   end
 
   def test_truth_of_a_param
@@ -53,14 +71,14 @@ class DynamicTest < Minitest::Test
       shown = "none" if shown == 0
       render json: { shown: shown }
     RUBY
-    assert_rust_includes rust, 'let mut shown = Value::from(Product::all().count(&mut req.ctx)?);'
-    assert_rust_includes rust, 'if shown.equals(&Value::from(0)) { shown = Value::from("none".to_string()); }'
+    assert_rust_includes rust, 'let mut shown = Value::Int(Product::all().count(&mut req.ctx)?);'
+    assert_rust_includes rust, 'if shown.equals(&Value::Int(0)) { shown = Value::from("none".to_string()); }'
     assert_includes fallbacks, "snippet.rb:2: shown, assigned int and str, falls back to Value"
   end
 
   def test_an_if_of_two_classes
     rust, fallbacks = translate('render json: { label: Product.count > 0 ? Product.count : "none" }')
-    assert_rust_includes rust, '{ Value::from(Product::all().count(&mut req.ctx)?) } else { Value::from("none".to_string()) }'
+    assert_rust_includes rust, '{ Value::Int(Product::all().count(&mut req.ctx)?) } else { Value::from("none".to_string()) }'
     assert_equal ["snippet.rb:1: the if's value, int or str, falls back to Value"], fallbacks
   end
 

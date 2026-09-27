@@ -17,8 +17,14 @@ module Rutile
     # The release binary's path.
     def run(crate:, runtime:, out:, image: nil, log: $stdout)
       name = crate_name(crate)
+      raise Error, "no Cargo.toml in #{runtime}; --runtime is the RustOnRails checkout" unless File.exist?(File.join(runtime, "Cargo.toml"))
+
       out = File.expand_path(out)
+      { "the crate" => crate, "the runtime" => runtime }.each do |what, input|
+        raise Error, "#{out} overlaps #{what} at #{input}; package somewhere apart from both" if overlap?(out, input)
+      end
       raise Error, "#{out} is inside a Cargo workspace; package somewhere outside it" if in_workspace?(out)
+      raise Error, "#{out} wasn't written by rutile package; refusing to replace it" unless replaceable?(out)
 
       FileUtils.rm_rf(%w[src vendor .cargo Cargo.toml Dockerfile .dockerignore].map { File.join(out, _1) })
       FileUtils.mkdir_p(out)
@@ -37,6 +43,29 @@ module Rutile
       binary = File.join(out, "target/release", name)
       run!(log, "docker", "build", "--tag", image, out) if image
       binary
+    end
+
+    # Either path inside the other, or the same, after symlinks.
+    def overlap?(a, b)
+      a, b = [a, b].map { real(File.expand_path(_1)) }
+      a == b || a.start_with?(File.join(b, "")) || b.start_with?(File.join(a, ""))
+    end
+
+    # A path's real form, through the part of it that exists.
+    def real(path)
+      return File.realpath(path) if File.exist?(path)
+
+      parent = File.dirname(path)
+      parent == path ? path : File.join(real(parent), File.basename(path))
+    end
+
+    # What packaging replaces is only ever its own: a missing or empty
+    # directory, or one whose Cargo.toml it wrote.
+    def replaceable?(out)
+      return true unless File.directory?(out) && !Dir.empty?(out)
+
+      manifest = File.join(out, "Cargo.toml")
+      File.file?(manifest) && File.read(manifest).include?('rustonrails = { path = "vendor/rustonrails" }')
     end
 
     def crate_name(crate)

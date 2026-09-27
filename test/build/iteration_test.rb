@@ -125,7 +125,7 @@ class IterationTest < Minitest::Test
     assert_rust_includes action("x = 1\nx *= 3 + 4\nrender json: { x: x }"), "let mut x = 1; x = x * (3 + 4);"
     assert_rust_includes action("x = 1.5\nx -= 0.5\nrender json: { x: x }"), "let mut x = 1.5; x = x - 0.5;"
     # An Integer local given a Float is a Value from the start.
-    assert_rust_includes action("x = 1\nx += 2.5\nrender json: { x: x }"), "let mut x = Value::from(1); x = x.add(&Value::from(2.5))?;"
+    assert_rust_includes action("x = 1\nx += 2.5\nrender json: { x: x }"), "let mut x = Value::Int(1); x = x.add(&Value::from(2.5))?;"
     refused("1: x += before it's assigned", "x += 2\nhead :ok")
     assert_rust_includes action("x = 7\nx /= 2\nrender json: { x: x }"), "x = div_integers(x, 2)?;"
   end
@@ -150,6 +150,9 @@ class IterationTest < Minitest::Test
     refused("1: using the value of each, which is its receiver,", "x = Product.all.each { |p| p }\nhead :ok")
     refused("1: using the value of find_each, which is its receiver,", "render json: Product.find_each { |p| p }")
     refused("1: a block passed to each_with_index", "Product.all.each_with_index { |p| p }\nhead :ok")
+    # Every keyword counts: start: would narrow the rows Ruby walks.
+    refused("1: find_each with options other than batch_size: a positive Integer",
+            "Product.find_each(batch_size: 1, start: 100) { |p| p.destroy! }\nhead :ok")
     refused("1: a block passed to any?", "render json: { a: Product.all.any? { |p| p.active? } }")
     refused("1: select with arguments and a block", "render json: Product.pluck(:stock).select(1) { it }")
     refused("1: each with arguments", "Product.all.each(1) { |p| p }\nhead :ok")

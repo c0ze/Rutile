@@ -124,7 +124,7 @@ class TranslatorTest < Minitest::Test
     translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
     lines, type = translator.body(Prism.parse("if title\n  1\nelse\n  \"a\"\nend").value.statements, :value)
     assert_equal Rutile::Build::T::VALUE, type
-    assert_rust_includes lines.join("\n"), 'if ctx[post].title.clone().is_some() { Ok(Value::from(1)) } else { Ok(Value::from("a".to_string())) }'
+    assert_rust_includes lines.join("\n"), 'if ctx[post].title.clone().is_some() { Ok(Value::Int(1)) } else { Ok(Value::from("a".to_string())) }'
     translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
     error = assert_raises(Rutile::Build::Unsupported) do
       translator.body(Prism.parse("if title\n  1\nelse\n  Post.all\nend").value.statements, :value)

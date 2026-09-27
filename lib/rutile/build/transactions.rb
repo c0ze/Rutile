@@ -33,6 +33,11 @@ module Rutile
         end
         unsupported!(node, "render inside a transaction block") if type == T::RESPONSE
         unsupported!(node, "using the value of a transaction block that ends in #{describe(type)}") if [T::UNIT, T::NIL].include?(type)
+        # A Value is nil after a Rollback, not an Option whose Some is true.
+        if type == T::VALUE
+          @uses.rt("Value")
+          return Code[[head, *lines, "})?.unwrap_or(Value::Nil)"].join("\n"), T::VALUE, :write, hint: "transaction"]
+        end
         rust = [head, *lines, "})?#{".flatten()" if type.nilable?}"].join("\n")
         Code[rust, type.nilable? ? type : T.nilable(type), :write, hint: "transaction"]
       end
