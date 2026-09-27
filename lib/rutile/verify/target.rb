@@ -54,16 +54,46 @@ module Rutile
         env["CONTENT_TYPE"] ? sent.merge("Content-Type" => env["CONTENT_TYPE"]) : sent
       end
 
+      # Without a transaction to roll back, Rails reloads the fixtures before
+      # each test, but a table no fixture file fills would keep what earlier
+      # tests wrote. So every table is emptied first, and the fixtures load
+      # into empty tables: nothing needs to know which tables they fill.
+      module EmptyTables
+        def setup_fixtures(...)
+          unless run_in_transaction?
+            pool = ActiveRecord::Base.connection_pool
+            internal = [pool.schema_migration.table_name, pool.internal_metadata.table_name]
+            Target.empty_tables(ActiveRecord::Base.connection, internal:)
+          end
+          super
+        end
+      end
+
+      def self.empty_tables(connection, internal:)
+        tables = connection.tables - internal
+        return if tables.empty?
+
+        # Nested as Rails nests them to load fixtures, so a failed delete
+        # rolls back the disabled triggers too.
+        connection.transaction(requires_new: true) do
+          connection.disable_referential_integrity do
+            tables.each { connection.delete("DELETE FROM #{connection.quote_table_name(_1)}") }
+          end
+        end
+      end
+
       # Points integration tests at `base_url`. Fixtures are committed rather
       # than wrapped in a per-test transaction, because the other server reads
       # the database through its own connections; Rails then reloads them
-      # before every test. Each test runs inside the executor with the query
-      # cache on, and writes made by another process can't clear it, so every
-      # forwarded request clears it the way an in-process write would.
+      # before every test, into tables EmptyTables has emptied. Each test runs
+      # inside the executor with the query cache on, and writes made by
+      # another process can't clear it, so every forwarded request clears it
+      # the way an in-process write would.
       def self.install(base_url)
         target = new(base_url, Rails.application.routes) { ActiveRecord::Base.clear_query_caches_for_current_thread }
         ActionDispatch::IntegrationTest.app = target
         ActiveSupport::TestCase.use_transactional_tests = false
+        ActiveSupport::TestCase.prepend(EmptyTables)
         # A green run that never reached the other server tested Rails.
         Minitest.after_run do
           next unless target.forwarded.zero?

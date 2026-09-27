@@ -89,6 +89,25 @@ class TargetTest < Minitest::Test
     refute_match(/^Version:/i, server.request)
   end
 
+  # Without a rolled-back transaction, a table no fixture file fills keeps
+  # what earlier tests wrote; verify empties every table but Rails' own
+  # before the fixtures load.
+  def test_empties_the_tables_no_fixture_fills
+    connection = Class.new do
+      attr_reader :deleted
+
+      def tables = %w[ar_internal_metadata audits posts schema_migrations tags]
+      def quote_table_name(name) = %("#{name}")
+      def disable_referential_integrity = yield
+      def transaction(requires_new:) = (@deleted ||= []) << "BEGIN #{requires_new}" && yield
+      def delete(sql) = (@deleted ||= []) << sql
+    end.new
+    Rutile::Verify::Target.empty_tables(connection, internal: %w[ar_internal_metadata schema_migrations])
+    # In one transaction, as Rails loads fixtures, so deferred foreign keys
+    # are checked once every table is empty.
+    assert_equal ["BEGIN true", 'DELETE FROM "audits"', 'DELETE FROM "posts"', 'DELETE FROM "tags"'], connection.deleted
+  end
+
   def test_passes_a_compressed_response_through_untouched
     gzipped = Zlib.gzip("{}")
     reply = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: gzip\r\nContent-Length: #{gzipped.bytesize}\r\nConnection: close\r\n\r\n".b + gzipped

@@ -16,6 +16,10 @@ From an audit of both repositories, reviewed by independent reviewers:
 - A missing `rustfmt` or `cargo`, a manifest that isn't JSON, and a model on a database view are reported instead of ending in a backtrace.
 - A rebuild with a different `--runtime` updates `Cargo.toml`'s path to it; the rest of the file stays the user's.
 - The rake tasks and tests read `RUSTONRAILS_DIR` as the CLI does, relative to where they were run. `rake example:benchmark` fails when the load generator or `psql` does, and runs neither through a shell.
+- `\w` and `\W` under `/i` stay ASCII, as in Ruby: Rust folded the Kelvin sign and the long s into them. Inside a bracket where `/i` is on they're refused. A `]` first in a class is literal, and a `/x` comment is copied untouched.
+- `public_send` of a private method is refused; Ruby raises `NoMethodError` where the direct call it compiled to reached the method. A call wrapped in `private` (`private attr_reader :title`) is checked like the same call on its own line.
+- The generated server builds every model's validations at boot, so a regexp Rust can't parse stops it there, naming the file, instead of on a request.
+- Verify empties the tables no fixture file fills before each test, which the transaction it turns off used to roll back.
 - Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MIN_RATE`, `MAX_BODY_BYTES`).
 
 ## 0.5.0

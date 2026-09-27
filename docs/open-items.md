@@ -4,9 +4,7 @@ Known defects and loose ends in the compiler and its tooling, kept here until th
 
 ## Compiles with a difference
 
-- **Regexps Rust can't parse** (a `\p{...}` name Rust doesn't know, for one) still compile, and the validator panics the first time it runs, since `cargo check` doesn't parse regexps. Compiling every model's behavior when the server starts would move that failure to boot.
-- **`\w` under `/i`** matches the Kelvin sign and the long s in Rust, not in Ruby.
-- **`public_send(:private_method)`** compiles as a direct call; Ruby raises `NoMethodError`.
+- **Regexps Rust can't parse** (a `\p{...}` name Rust doesn't know, for one) still pass `rutile build`, since `cargo check` doesn't parse regexps. The server builds every model's validations when it starts, so it stops there, naming the model's file, rather than on a request.
 
 ## rutile check
 
@@ -14,8 +12,7 @@ Known defects and loose ends in the compiler and its tooling, kept here until th
 
 ## Verify and the rake tasks
 
-- **Verify runs `test/integration` only.** Model tests aren't run against the Rust build.
-- **Fixtures reload before each test only for tables with a fixture file**, since transactional tests are off under verify. A table without one keeps rows from earlier tests.
+- **Verify runs `test/integration` only.** Model tests call the Ruby models in the test's own process, so there's nothing to forward to the Rust build; they'd need a way to call the compiled models directly.
 
 ## On hold
 
