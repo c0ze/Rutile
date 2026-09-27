@@ -24,9 +24,10 @@ module Rutile
           return ivar_named(name, node) if args.empty? && @controller.reader?(name)
 
           type = @controller.helper(name, node) or return nil
-          unsupported!(node, "calling #{name} with arguments") unless args.empty?
           unsupported!(node, "calling #{name}, which renders, from another method") if @controller.halting?(name)
-          Code["self.#{Names.method(name)}(req)?", type, :write, hint: name.end_with?("_params") ? "attributes" : name]
+          values = call_arguments(@controller.signature(name), args, node, name, bind: :all)
+          Code["self.#{Names.method(name)}(#{["req", *values].join(", ")})?", type, :write,
+               hint: name.end_with?("_params") ? "attributes" : name.delete_suffix("?").delete_suffix("!")]
         end
       end
 
@@ -36,8 +37,12 @@ module Rutile
         unsupported!(node, "render with #{extra.join(", ")}") unless extra.empty?
         value = options["json"] or unsupported!(node, "render without json:")
         status = status_code(options["status"], node)
-        json = json_of(expr(value), value)
+        code = expr(value)
         @uses.rt("Response")
+        # Rails sends a String as it is, not as JSON; a Value may hold one.
+        return Code["Response::json_value(#{status}, #{owned(code)})", T::RESPONSE, code.ctx] if code.type == T::VALUE
+
+        json = json_of(code, value)
         Code["Response::json(#{status}, #{json.rust})", T::RESPONSE, json.ctx]
       end
 
@@ -62,6 +67,9 @@ module Rutile
         when :record then render_record(code, code.type.model, nil, node)
         when :relation then render_relation(code, code.type.model, nil, node)
         when :list then list_json(code, node)
+        when :value
+          @uses.rt("value_json")
+          Code["value_json(#{owned(code)})", T::JSON, code.ctx]
         when :errors
           @uses.rt("errors_json")
           Code["errors_json(#{code.rust})", T::JSON, :read]
@@ -170,11 +178,11 @@ module Rutile
         case name
         when "[]"
           key = symbol!(only(args, node), node)
-          Code["#{receiver.rust}.value(#{Names.str(key)})", T::VALUE, hint: key]
+          Code["#{receiver.rust}.value(#{Names.str(key)})?", T::VALUE, hint: key]
         when "fetch"
           unsupported!(node, "fetch without a default") unless args.size == 2
           key, default = args
-          Code["#{receiver.rust}.fetch(#{Names.str(symbol!(key, node))}, #{fetch_default(default, node)})", T::VALUE,
+          Code["#{receiver.rust}.fetch(#{Names.str(symbol!(key, node))}, #{fetch_default(default, node)})?", T::VALUE,
                hint: key.unescaped]
         when "require" then Code["#{receiver.rust}.require(#{Names.str(symbol!(only(args, node), node))})?", T::PARAMS, hint: "params"]
         when "permit" then Code["#{receiver.rust}.permit(#{Names.str_slice(args.map { symbol!(_1, node) })})", T::ATTRIBUTES, hint: "attributes"]
@@ -196,12 +204,23 @@ module Rutile
         end
       end
 
+      def ivar(node) = ivar_named(node.name.to_s.delete_prefix("@"), node)
+
+      # `@current_user`, or `current_user` through an attr_reader.
+      def ivar_named(name, node)
+        unsupported!(node, "instance variables here") unless @env == :controller
+        type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
+        # A String field is cloned: the controller is borrowed, not owned.
+        field = T.nilable(type).copy? ? "self.#{name}" : "self.#{name}.clone()"
+        Code[field, T.nilable(type), hint: name]
+      end
+
       # A param value. `blank?` is Value's own; `present?` comes from Blank.
       def on_value(receiver, _node, name, args)
         return nil unless args.empty?
 
         case name
-        when "to_s" then Code["#{receiver.rust}.to_ruby_string()", T::STR, receiver.ctx, hint: receiver.hint]
+        when "to_s" then Code["#{receiver.rust}.to_s()", T::STR, receiver.ctx, hint: receiver.hint]
         when "to_i" then Code["#{receiver.rust}.to_i()?", T::INT, receiver.ctx, hint: receiver.hint]
         when "nil?" then Code["#{receiver.rust}.is_nil()", T::BOOL, receiver.ctx]
         when "blank?" then Code["#{receiver.rust}.is_blank()", T::BOOL, receiver.ctx]
@@ -234,7 +253,8 @@ module Rutile
 
         key = only(args, node)
         unsupported!(node, "a query key that isn't a literal") unless key.is_a?(Prism::StringNode) || key.is_a?(Prism::SymbolNode)
-        Code["#{receiver.rust}.get(#{Names.str(key.unescaped)})", T::JSON_OPT]
+        # Owned, so a local holding it borrows nothing from the request.
+        Code["#{receiver.rust}.get(#{Names.str(key.unescaped)}).cloned()", T::JSON_OPT]
       end
 
       # A rescue handler's RecordInvalid. It carries the invalid record's

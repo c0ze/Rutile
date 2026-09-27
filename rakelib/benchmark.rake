@@ -1,7 +1,7 @@
 require "net/http"
 require "open3"
 require_relative "../lib/rutile/unbundled"
-require_relative "support/servers"
+require_relative "../lib/rutile/verify"
 
 # Rails (Puma) and the Rust port on the same database and rows, measured
 # with RustOnRails' `loadgen`: requests per second, p50/p99 latency, and
@@ -17,15 +17,15 @@ namespace :example do
   task benchmark: :build do
     rust = RUST_DIR
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE, "-p", "loadgen" }
-    loadgen = ExampleServers.release_binary(rust, "loadgen")
+    loadgen = Rutile::Verify::Servers.release_binary(rust, "loadgen")
     bench = BENCHMARKS.fetch(EXAMPLE) { abort "no benchmark for EXAMPLE=#{EXAMPLE}" }
     load_rows(bench[:seed])
     paths = bench[:paths].call
-    [54410, 54420].each { ExampleServers.ensure_port_free(_1) }
+    [54410, 54420].each { Rutile::Verify::Servers.ensure_port_free(_1) }
     rails = start_rails(54410, threads: 5, workers: ENV.fetch("RAILS_WORKERS", "0").to_i)
     rust_server = start_rust(rust, 54420, workers: 5)
     servers = [["rails", 54410, rails], ["rust", 54420, rust_server]]
-    servers.each { |_, port, pid| ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", pid, timeout: 60) }
+    servers.each { |_, port, pid| Rutile::Verify::Servers.wait_for_up("http://127.0.0.1:#{port}/up", pid, timeout: 60) }
     same_responses!(paths, bench[:headers])
     puts "rails: #{rails_setup}; rust: 5 workers; loadgen: 10 connections, 3 s warm-up, 10 s per run"
     servers.each do |name, port, pid|
@@ -39,7 +39,7 @@ namespace :example do
       end
     end
   ensure
-    ExampleServers.stop_all([rails, rust_server])
+    Rutile::Verify::Servers.stop_all([rails, rust_server])
   end
 end
 
@@ -130,7 +130,7 @@ end
 def start_rust(rust, port, workers:)
   env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
           "WORKERS" => workers.to_s }
-  spawn(env, ExampleServers.release_binary(rust, EXAMPLE), err: File::NULL)
+  spawn(env, Rutile::Verify::Servers.release_binary(rust, EXAMPLE), err: File::NULL)
 end
 
 # The server and its forked workers. Proportional set size where Linux

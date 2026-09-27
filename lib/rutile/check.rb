@@ -18,6 +18,7 @@ module Rutile
       source(app_dir, app, diagnostics)
       Files.check(app_dir, diagnostics)
       Build::Crate.new(app, app_dir, name: File.basename(app_dir), runtime: app_dir).files
+      app.fallbacks.each { diagnostics.note(_1) }
       diagnostics
     end
 

@@ -119,10 +119,15 @@ class TranslatorTest < Minitest::Test
     assert_equal "snippet.rb:4: t before it's assigned isn't supported yet", error.message
   end
 
-  def test_branches_of_different_types_are_refused
+  # A method whose branches end on different classes gives a Value.
+  def test_branches_of_different_types_fall_back_to_value
+    translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
+    lines, type = translator.body(Prism.parse("if title\n  1\nelse\n  \"a\"\nend").value.statements, :value)
+    assert_equal Rutile::Build::T::VALUE, type
+    assert_rust_includes lines.join("\n"), 'if ctx[post].title.clone().is_some() { Ok(Value::from(1)) } else { Ok(Value::from("a".to_string())) }'
     translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
     error = assert_raises(Rutile::Build::Unsupported) do
-      translator.body(Prism.parse("if title\n  1\nelse\n  \"a\"\nend").value.statements, :value)
+      translator.body(Prism.parse("if title\n  1\nelse\n  Post.all\nend").value.statements, :value)
     end
     assert_equal "snippet.rb:1: an if whose branches return different types isn't supported yet", error.message
   end
@@ -277,7 +282,7 @@ class TranslatorTest < Minitest::Test
 
   def test_what_would_change_meaning_is_refused
     assert_equal "snippet.rb:1: using the value of && or || isn't supported yet", refused("x = title || body")
-    assert_equal "snippet.rb:1: a local assigned nil isn't supported yet", refused("x = nil")
+    assert_equal "snippet.rb:2: giving x a new type isn't supported yet", refused("x = nil\nx = Post.all")
     assert_equal "snippet.rb:1: &. with an operator isn't supported yet", refused('self.title = "x" if title&.==(nil)')
     assert_equal "snippet.rb:1: where.not with more than one condition isn't supported yet",
                  refused("Post.where.not(title: \"x\", status: :draft)")

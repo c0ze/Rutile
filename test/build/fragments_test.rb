@@ -34,7 +34,7 @@ class FragmentsTest < Minitest::Test
                       from: TrackerHelper::APP, manifest: TrackerHelper.manifest, diagnostics: Rutile::Build::Diagnostics.new)
     rust = Rutile::Build::ControllerFile.new(app, "TasksController").to_rust
     refute app.diagnostics.problems.any? { _1.start_with?("app/controllers/tasks_controller.rb:") && _1.include?(":8:") }
-    assert_rust_includes rust, 'tasks = tasks.search(req.params.value("q").to_str()?);'
+    assert_rust_includes rust, 'tasks = tasks.search(req.params.value("q")?.to_str()?);'
   end
 
   def test_interpolation_formats_and_escapes_braces
@@ -47,7 +47,7 @@ class FragmentsTest < Minitest::Test
     refused("a SQL fragment with $") { translate('found = Task.where("a = $1")') }
     refused("sanitize_sql_like with int") { translate("found = Task.sanitize_sql_like(1)") }
     refused("passing int to scope :search's query (str)") { translate("found = Task.search(1)") }
-    refused("interpolating int or nil") { translate('found = Task.where("title = ?", "#{estimate}")') }
+    refused("interpolating date or nil") { translate('found = Task.where("title = ?", "#{due_on}")') }
   end
 
   # `.into()` binds tighter than `-`, so an arithmetic bind keeps its parentheses.

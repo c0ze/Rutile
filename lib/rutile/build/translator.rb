@@ -15,19 +15,27 @@ module Rutile
 
       include ModelCalls
       include RecordMethods
+      include Arguments
       include RecordCalls
       include Borrowing
       include WebCalls
       include ControlFlow
       include Blocks
+      include Iteration
+      include Lists
+      include Calculations
+      include Transactions
       include Expressions
       include Constants
       include Queries
+      include Dynamic
 
       # env: :model (a callback; `self` is a record), :scope (`self` is a
       # relation), :controller (an action or helper), :constraint (a route
       # lambda). `result` is false for functions that don't return Result.
-      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false)
+      # `returns` is the type a signature declares for the value the body ends on.
+      def initialize(app, path, uses, env:, model: nil, self_var: nil, controller: nil, result: true, block: false, returns: nil)
+        @returns = returns
         @app = app
         @path = path
         @uses = uses
@@ -41,7 +49,7 @@ module Rutile
         @depth = 0
         @locals = {}
         @writes = Hash.new(0)
-        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS].compact)
+        @taken = Set.new(["ctx", "req", "self", self_var, *KEYWORDS, *Names::FUNCTIONS].compact)
         @renames = {}
         @params = Set.new
         @lines = []
@@ -61,7 +69,8 @@ module Rutile
         unsupported!(node, "rescue or ensure around a whole body") if node && !node.is_a?(Prism::StatementsNode)
         @mode = tail
         reserve(node) if node
-        block(node ? node.body : [], tail)
+        lines, type = retyped { block(node ? node.body : [], tail) }
+        [Names.needless_mut(lines, @writes.keys.map { @renames.fetch(_1, _1) }), type]
       end
 
       private
@@ -78,6 +87,7 @@ module Rutile
         statements.each_with_index do |node, i|
           last = i == statements.size - 1
           unsupported!(statements[i + 1], "code after return") if node.is_a?(Prism::ReturnNode) && !last
+          unsupported!(statements[i + 1], "code after raise") if rollback?(node) && !last
           # A method's trailing `return` is where it ends anyway.
           next if node.is_a?(Prism::ReturnNode) && last && @depth == 1 && tail == :unit && !@block && !node.arguments
 
@@ -95,11 +105,11 @@ module Rutile
       # and how often each local is assigned, for `let mut`.
       def reserve(node)
         case node
-        when Prism::LocalVariableWriteNode
+        when Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode
           name = node.name.to_s
           @writes[name] += 1
           # One that would shadow the record, the Ctx or a keyword gets another name.
-          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS].include?(name)
+          reserved = ["ctx", "req", "self", @self_var, *KEYWORDS, *Names::FUNCTIONS].include?(name)
           reserved ? (@renames[name] ||= fresh(name)) : @taken << name
         when Prism::RequiredParameterNode, Prism::LocalVariableTargetNode
           @taken << node.name.to_s
@@ -111,10 +121,10 @@ module Rutile
         return filter_tail(node) if tail == :filter
         return branch(node, tail) if node.is_a?(Prism::IfNode) && node.subsequent
 
-        code = expr(node)
+        code = @returns && tail == :value ? returned(value(node), node) : expr(node)
         # A caller would get a String back, which `==` against a String
         # compares where Ruby's Symbol never equals one.
-        unsupported!(node, "a method returning a symbol") if code.extra[:symbol]
+        unsupported!(node, "returning a Symbol") if tail == :value && code.extra[:symbol]
         if tail == :response
           raise Unsupported.at(@path, node, "an action that doesn't end in render or head") unless code.type == T::RESPONSE
 
@@ -129,14 +139,18 @@ module Rutile
         case node
         when Prism::IfNode, Prism::UnlessNode then conditional(node)
         when Prism::LocalVariableWriteNode then assign_local(node)
+        when Prism::LocalVariableOperatorWriteNode then operator_assign(node)
         when Prism::InstanceVariableWriteNode then assign_ivar(node)
         when Prism::CallOrWriteNode then or_assign(node)
         when Prism::ReturnNode then early_return(node)
         else
+          return if block_statement(node)
+
           code = expr(node)
           unsupported!(node, "render or head anywhere but at the end of an action or filter") if code.type == T::RESPONSE
-          # A plain name (the record `create!` returns) as a statement does nothing.
-          @lines << "#{code.rust};" unless code.rust.match?(/\A[a-z_][a-z0-9_]*\z/)
+          # A value that can't fail or write (`nil`, `stock + 1`, the record
+          # `create!` returns) does nothing as a statement; Rust would warn.
+          @lines << "#{code.rust};" if impure?(code)
         end
       end
 
@@ -144,19 +158,23 @@ module Rutile
         name = node.name.to_s
         unsupported!(node, "assigning to the parameter #{name}") if @params.include?(name)
         rust = @renames.fetch(name, name)
-        code = value(node.value)
-        unsupported!(node, "a local assigned nil") if code.type == T::NIL
+        code = local_value(name, value(node.value))
+        retype!(name, code, code, node) if code.type == T::NIL
         if (known = @locals[name])
-          same = known.type == code.type && !known.extra[:symbol] == !code.extra[:symbol]
-          raise Unsupported.at(@path, node, "giving #{name} a new type") unless same
+          if known.type != code.type
+            retype!(name, known, code, node)
+          elsif !known.extra[:symbol] != !code.extra[:symbol]
+            # A String local given a Symbol would still compare as a String.
+            unsupported!(node, "a Symbol in #{name}, which is assigned again")
+          end
 
           @lines << "#{rust} = #{owned(code, known.type)};"
         else
           # A local assigned again holds a String, whatever literal it starts from.
           again = @writes[name] > 1
+          unsupported!(node, "a Symbol in #{name}, which is assigned again") if again && code.extra[:symbol]
           @lines << "let #{"mut " if again}#{rust} = #{owned(code, again ? code.type : nil)};"
-          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal],
-                                                    symbol: code.extra[:symbol]]
+          @locals[name] = Code[rust, code.type, local: true, literal: again ? nil : code.extra[:literal], symbol: code.extra[:symbol]]
         end
       end
 
@@ -200,9 +218,8 @@ module Rutile
         # A Symbol is a string in Rust; `symbol` keeps the difference where
         # Ruby would see it (`"done" == :done` is false).
         when Prism::SymbolNode then Code[Names.str(node.unescaped), T::STR, literal: true, symbol: true]
-        when Prism::IntegerNode
-          unsupported!(node, "an integer past 64 bits") unless node.value.bit_length < 64
-          Code[node.value.to_s, T::INT]
+        when Prism::IntegerNode then integer_literal(node)
+        when Prism::FloatNode then float_literal(node)
         when Prism::NilNode then Code["None", T::NIL]
         when Prism::AndNode, Prism::OrNode then logic(node)
         when Prism::IfNode then ternary(node)
@@ -210,6 +227,7 @@ module Rutile
         when Prism::FalseNode then Code["false", T::BOOL]
         when Prism::ParenthesesNode then expr(only(node.body&.body || [], node))
         when Prism::LocalVariableReadNode then @locals[node.name.to_s] || unsupported!(node, "#{node.name} before it's assigned")
+        when Prism::ItLocalVariableReadNode then @locals["it"] || unsupported!(node, "it outside a block")
         when Prism::InstanceVariableReadNode then ivar(node)
         when Prism::SelfNode then self_code(node)
         when Prism::ConstantReadNode then constant(node)
@@ -217,17 +235,6 @@ module Rutile
         when Prism::CallNode then call(node)
         else unsupported!(node, node.type.to_s.delete_suffix("_node").tr("_", " "))
         end
-      end
-
-      def ivar(node) = ivar_named(node.name.to_s.delete_prefix("@"), node)
-
-      # `@current_user`, or `current_user` through an attr_reader.
-      def ivar_named(name, node)
-        unsupported!(node, "instance variables here") unless @env == :controller
-        type = @controller.ivar_type(name) or unsupported!(node, "reading @#{name} before a filter assigns it")
-        # A String field is cloned: the controller is borrowed, not owned.
-        field = T.nilable(type).copy? ? "self.#{name}" : "self.#{name}.clone()"
-        Code[field, T.nilable(type), hint: name]
       end
 
       def self_code(node)
@@ -241,11 +248,8 @@ module Rutile
       def call(node)
         args = node.arguments&.arguments || []
         name = node.name.to_s
-        if node.block
-          return map_block(node) if name == "map" && node.receiver && args.empty? && !node.safe_navigation?
-
-          unsupported!(node, "a block passed to #{node.name}")
-        end
+        return block_call(node, name, args) if node.block
+        unsupported!(node, "raise where a value belongs") if name == "raise" && node.receiver.nil?
         # design.md: `send(:title)` is a direct call to `title`.
         if SENDS.include?(name) && (args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode))
           public_only!(node, args.first.unescaped) if name == "public_send"
@@ -299,25 +303,6 @@ module Rutile
         handler = "on_#{receiver.type.kind}"
         found = respond_to?(handler, true) ? send(handler, receiver, node, name, args) : nil
         found || unsupported!(node, "#{name} on #{describe(receiver.type)}")
-      end
-
-      # `x&.m`: nil stays nil, otherwise `m` runs on the value.
-      def safe_call(receiver, node, name, args)
-        return send_to(receiver, node, name, args) unless receiver.type.nilable?
-
-        receiver = bind(receiver) if receiver.reads? || impure?(receiver)
-        var = @locals.key?(receiver.hint) || receiver.hint.nil? ? fresh("value") : receiver.hint
-        saved = @lines
-        @lines = []
-        inner = send_to(Code[var, receiver.type.inner, hint: receiver.hint], node, name, args)
-        unsupported!(node, "&. on a call that needs statements") unless @lines.empty?
-        unsupported!(node, "&. on a call that writes") if inner.writes? || inner.rust.include?("?")
-        @lines = saved
-        # Onto something that may itself be nil, it stays one Option deep.
-        flat = inner.type.nilable?
-        rust = "#{receiver.rust}.#{flat ? "and_then" : "map"}(|#{var}| #{inner.rust})"
-        safe = inner.type == T::BOOL ? { safe: [receiver.rust, var, inner.rust] } : {}
-        Code[rust, flat ? inner.type : T.nilable(inner.type), :read, nav: true, **safe]
       end
     end
   end

@@ -124,8 +124,8 @@ class ModelMethodsTest < Minitest::Test
 
   def test_what_a_method_cant_be
     cases = {
-      "  def rename(name) = update!(name:)\n" => "app/models/project.rb:27: a model method with parameters isn't supported yet",
-      "  def loop! = loop!\n" => "app/models/project.rb:27: loop! calling itself isn't supported yet",
+      "  def rename(name) = update!(name:)\n" => "app/models/project.rb:27: a model method with parameters and no rbs-inline signature isn't supported yet",
+      "  def loop! = loop!\n" => "app/models/project.rb:27: loop! calling itself, directly or through another method, isn't supported yet",
       "  def to_s = name\n  def -@ = name\n" => "app/models/project.rb:28: a model method named -@ isn't supported yet",
       "  def all = name\n" => "app/models/project.rb:27: a model method named all isn't supported yet",
       "  def owner_name = owner\n" => nil

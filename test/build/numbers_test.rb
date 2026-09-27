@@ -29,10 +29,22 @@ class NumbersTest < Minitest::Test
   end
 
   def test_arithmetic_outside_numbers_is_refused
-    refused("+ between str and str") { callback('self.title = "a" + "b"') }
     refused("+ between int and nil") { callback("self.comments_count = 1 + nil") }
-    refused("/ on int") { callback("self.comments_count = 7 / 2") }
+    refused("- between str and str") { callback('self.title = "a" - "b"') }
     refused("max over int or nil and int") { callback("self.comments_count = [comments_count, 1].max") }
+  end
+
+  # Ruby's `/` and `%` round toward negative infinity and raise on zero;
+  # an Integer with a Float is a Float; two Strings concatenate.
+  def test_division_modulo_and_coercion
+    assert_rust_includes callback("self.comments_count = 7 / 2"), "Some(div_integers(7, 2)?)"
+    assert_rust_includes callback("self.comments_count = -7 % 2"), "Some(mod_integers(-7, 2)?)"
+    assert_rust_includes callback("self.comments_count = 1 + 2 * 3 / 4"), "Some(1 + div_integers(2 * 3, 4)?)"
+    translator = Rutile::Build::Translator.new(app, "snippet.rb", Rutile::Build::Uses.new, env: :model, model: "Post", self_var: "post")
+    lines, type = translator.body(Prism.parse("(1 + 2.5) % 2").value.statements, :value)
+    assert_equal Rutile::Build::T::FLOAT, type
+    assert_rust_includes lines.join, "Ok(mod_floats((1 as f64) + 2.5, 2 as f64)?)"
+    assert_rust_includes callback('self.title = "a" + "b"'), 'Some(format!("{}{}", "a", "b"))'
   end
 
   # ApplicationController#page in the tracker: [params.fetch(:page, 1).to_i, 1].max
@@ -41,7 +53,7 @@ class NumbersTest < Minitest::Test
       ruby.sub("@post = Post.find(params[:id])", "@post = Post.find([params.fetch(:id, 1).to_i, 1].max)")
     end })
     rust = Rutile::Build::ControllerFile.new(app, "PostsController").to_rust
-    assert_rust_includes rust, 'Post::find(&mut req.ctx, i64::max(req.params.fetch("id", 1).to_i()?, 1))?'
+    assert_rust_includes rust, 'Post::find(&mut req.ctx, i64::max(req.params.fetch("id", 1)?.to_i()?, 1))?'
   end
 
   def test_fetch_needs_a_literal_default

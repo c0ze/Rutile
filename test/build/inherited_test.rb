@@ -139,8 +139,8 @@ class InheritedTest < Minitest::Test
   # set_project: current_user.projects.find(params[:project_id])
   def test_find_through_an_association
     rust, problems = controller("TasksController")
-    assert_rust_includes rust, 'User::PROJECTS.of(&req.ctx, ' # then .find(&mut req.ctx, req.params.value("project_id"))?
-    assert_rust_includes rust, '.find(&mut req.ctx, req.params.value("project_id"))?'
+    assert_rust_includes rust, 'User::PROJECTS.of(&req.ctx, ' # then .find(&mut req.ctx, req.params.value("project_id")?)?
+    assert_rust_includes rust, '.find(&mut req.ctx, req.params.value("project_id")?)?'
     refute problems.any? { _1.include?("through") }, problems.join("\n")
   end
 

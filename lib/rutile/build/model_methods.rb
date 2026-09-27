@@ -12,7 +12,7 @@ module Rutile
       # What a method may return: the types with a Rust spelling.
       RETURNABLE = %i[record relation nilable str int float bool time date value json attributes unit].freeze
 
-      Entry = Struct.new(:model, :name, :node, :visibility, :state, :type, :rust, :uses)
+      Entry = Struct.new(:model, :name, :node, :visibility, :state, :type, :rust, :uses, :signature)
 
       def initialize(app)
         @app = app
@@ -33,7 +33,11 @@ module Rutile
       def type(model, name, at)
         found = entry(model, name) or raise Error, "#{model} has no method #{name}"
         raise Unsupported.at(*at, "calling #{name}, which is also a callback,") if hook?(model, name)
-        raise Unsupported.at(*at, "#{name} calling itself") if found.state == :working
+        # Ruby stops runaway recursion with SystemStackError, a 500; a Rust
+        # stack overflow aborts the whole server.
+        if found.state == :working
+          raise Unsupported.at(*at, "#{name} calling itself, directly or through another method,")
+        end
 
         translate(found) unless found.state
         raise Skipped, name if found.state == :failed
@@ -49,6 +53,9 @@ module Rutile
         defs, readers, named = declared(path)
         defs[name.to_s]&.last || readers[name.to_s] || named[name.to_s]
       end
+
+      # The signature of a method `type` has translated, or nil.
+      def signature(model, name) = entry(model, name)&.signature
 
       # Every public method but the callbacks, for the model file.
       def publics(model)
@@ -80,7 +87,6 @@ module Rutile
       def compile(entry)
         path = @app.model_path(entry.model)
         node = entry.node
-        raise Unsupported.at(path, node, "a model method with parameters") if node.parameters
         raise Unsupported.at(path, node, "the #{entry.visibility} method #{entry.name}") if entry.visibility == :protected
         unless entry.name.match?(/\A[a-z_][a-z0-9_]*[?!]?\z/) && !RESERVED.include?(Names.method(entry.name))
           raise Unsupported.at(path, node, "a model method named #{entry.name}")
@@ -95,22 +101,46 @@ module Rutile
           raise Unsupported.at(path, node, "#{entry.name}, whose Rust name #{Names.method(entry.name)} Rutile gives something else,")
         end
 
+        signature = entry.signature = Signatures.of(@app, path, node)
+        raise Unsupported.at(path, node, "a model method with parameters and no rbs-inline signature") if node.parameters && !signature
+
         var = Names.var(entry.model)
         entry.uses = Uses.new
-        translator = Translator.new(@app, path, entry.uses, env: :model, model: entry.model, self_var: var)
-        lines, type = translator.body(node.body, :value)
+        declared = signature&.returns
+        entry.type = declared
+        translator = Translator.new(@app, path, entry.uses, env: :model, model: entry.model, self_var: var,
+                                                           returns: declared == T::UNIT ? nil : declared)
+        params = (signature&.params || []).map do |param|
+          rust = parameter_name(param.name, var)
+          translator.declare(param.name, rust, param.type)
+          entry.uses.type(param.type)
+          [rust, param.type]
+        end
+        tail = declared == T::UNIT ? :unit : :value
+        lines, type = translator.body(node.body, tail)
+        lines.concat(Names.ended(lines)) if tail == :unit
+        type = declared || type
         raise Unsupported.at(path, node, "a model method returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 
         entry.uses.type(type)
         entry.uses.rt("Ctx", "Handle", "Result")
         entry.type = type
-        text = lines.join("\n")
-        ctx = Names.mentions?(text, "ctx") ? "ctx" : "_ctx"
-        record = Names.mentions?(text, var) ? var : "_#{var}"
-        entry.rust = "// #{path}:#{node.location.start_line}\n#{"pub " if entry.visibility == :public}" \
-                     "fn #{Names.method(entry.name)}(#{ctx}: &mut Ctx, #{record}: Handle<#{entry.model}>) -> Result<#{type.rust}> " \
-                     "{\n#{text}\n}"
+        entry.rust = emit(entry, lines, params, var, type)
       end
+
+      def emit(entry, lines, params, var, type)
+        path = @app.model_path(entry.model)
+        text = lines.join("\n")
+        used = ->(name) { Names.mentions?(text, name) ? name : "_#{name}" }
+        arguments = ["#{used.("ctx")}: &mut Ctx", "#{used.(var)}: Handle<#{entry.model}>",
+                     *params.map { |rust, param_type| "#{used.(rust)}: #{param_type.rust}" }]
+        "// #{path}:#{entry.node.location.start_line}\n#{"pub " if entry.visibility == :public}" \
+          "fn #{Names.method(entry.name)}(#{arguments.join(", ")}) -> Result<#{type.rust}> {\n#{text}\n}"
+      end
+
+      # A parameter's Rust name: its own, unless Rust or the method's other
+      # names already mean something by it.
+      def parameter_name(name, var) = Names.parameter(name, ["ctx", "req", "self", var])
 
       # What Rails' own code would call instead of Rutile's calls: a column
       # or association reader, or a method of Active Record's. Nil if none.

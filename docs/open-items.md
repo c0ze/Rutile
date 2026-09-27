@@ -12,8 +12,4 @@ Known defects and loose ends in the compiler and its tooling, kept here until th
 
 ## On hold
 
-- **Arrays and hashes read as a scalar param** are nil, so `?status[]=todo&status[]=doing` read as `params[:status]` gives an unfiltered list where Rails filters with `IN`. Waiting on real array support, which the translator and the runtime's params both need.
-
-## Parallel work
-
-`main` and the `feature/tooling` branch (0.6 to 0.9: signatures, the `Value` fallback, `rutile verify` and `rutile package`, the RuboCop plugin, the deploy guide) changed the same code in parallel. Overlaps to resolve when they're merged: `lib/rutile/verify/target.rb` (verify here counts forwarded requests and returns response headers; the branch adds the `rutile verify` command), much of `lib/rutile/build/`, `lib/rutile/introspect/`, the changelog, `docs/design.md`, `docs/gaps.md` and `docs/roadmap.md`. The branch also fixes the runtime's transaction rollback defect.
+- **Arrays and hashes read as a scalar param**: `?status[]=todo&status[]=doing` read as `params[:status]` is a TypeError (a 500), since a `Value` holds scalars only, where Rails filters with `IN`. Waiting on arrays in `Value` and in the translator.

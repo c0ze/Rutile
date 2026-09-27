@@ -74,6 +74,18 @@ module Rutile
       # response would be dropped and the caller would carry on.
       def halting?(name) = renders?(definition(name)&.first)
 
+      # What an action's translation has changed here, for a retry to undo:
+      # the helpers it translated (their imports go with the attempt) and
+      # the instance variables it typed.
+      def checkpoint = [@helpers.dup, @ivars.dup, @filter_failed]
+
+      # In place: a helper being translated assigns into this same Hash.
+      def rollback(state)
+        @helpers.replace(state[0])
+        @ivars.replace(state[1])
+        @filter_failed = state[2]
+      end
+
       # A method of this controller that isn't an action, translated the
       # first time something calls it. A filter returns nothing; a helper
       # returns its last value; a rescue handler returns a response, and
@@ -98,31 +110,48 @@ module Rutile
         @helpers[name][:type]
       end
 
+      # A helper's rbs-inline signature, once `helper` has translated it.
+      def signature(name) = @helpers[name]&.fetch(:signature, nil)
+
       private
 
       def translate_helper(name, node, path, tail)
-        translator = translator(path)
         parameter = Rescues.parameter(@app, path, node) if tail == :response
-        raise Unsupported.at(path, node, "a controller method with parameters") if node.parameters && !parameter
-
+        signature = Signatures.of(@app, path, node) unless parameter
+        if node.parameters && !parameter
+          raise Unsupported.at(path, node, "a controller method with parameters and no rbs-inline signature") unless signature
+          # Rails calls a filter with no arguments.
+          raise Unsupported.at(path, node, "a before_action method with parameters") if %i[unit filter].include?(tail)
+        end
+        declared = signature&.returns
+        tail = :unit if declared == T::UNIT && tail == :value
+        translator = translator(path, returns: tail == :value ? declared : nil)
         exception = parameter && Rescues.declare(translator, @uses, node, parameter)
+        params = (signature&.params || []).map do |param|
+          rust = Names.parameter(param.name, %w[req ctx self])
+          translator.declare(param.name, rust, param.type)
+          @uses.type(param.type)
+          [rust, param.type]
+        end
         lines, type = translator.body(node.body, tail)
+        type = declared if declared && tail == :value
         returned = { unit: "()", response: "Response", filter: "Option<Response>" }.fetch(tail) do
           raise Unsupported.at(path, node, "a helper returning #{type.kind}") unless RETURNABLE.include?(type.kind)
 
           @uses.type(type)
           type.rust
         end
-        lines << "Ok(())" if tail == :unit
+        lines.concat(Names.ended(lines)) if tail == :unit
+        arguments = params.map { |rust, param_type| "#{Names.mentions?(lines, rust) ? rust : "_#{rust}"}: #{param_type.rust}" }
         rust = "// #{path}:#{node.location.start_line}\n" \
-               "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception].join(", ")}) " \
+               "fn #{Names.method(name)}(#{["&mut self", "#{req(lines)}: &mut Request", *exception, *arguments].join(", ")}) " \
                "-> Result<#{returned}> {\n#{lines.join("\n")}\n}"
-        { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust: }
+        { type: %i[unit filter].include?(tail) ? T::UNIT : type, rust:, signature: }
       end
 
       def defs = @app.source.defs(@path)
 
-      def translator(path = @path) = Translator.new(@app, path, @uses, env: :controller, controller: self)
+      def translator(path = @path, returns: nil) = Translator.new(@app, path, @uses, env: :controller, controller: self, returns:)
 
       # Private methods come from this file, then ApplicationController:
       # Rust has no inheritance, so an inherited method is translated into

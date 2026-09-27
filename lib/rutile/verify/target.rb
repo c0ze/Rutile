@@ -101,6 +101,7 @@ module Rutile
           warn "rutile verify: no request reached #{base_url}; the tests ran against Rails"
           exit false
         end
+        target
       end
     end
   end

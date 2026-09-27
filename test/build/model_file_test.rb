@@ -257,7 +257,7 @@ class ModelFileTest < Minitest::Test
   def test_a_method_returning_a_symbol_is_refused
     app = scratch_app({ "app/models/post.rb" => ->(ruby) { ruby.sub("class Post < ApplicationRecord\n", "class Post < ApplicationRecord\n  def level = :high\n\n") } })
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::ModelFile.new(app, "Post").to_rust }
-    assert_match(/post.rb:\d+: a method returning a symbol isn't supported yet\z/, error.message)
+    assert_match(/post.rb:\d+: returning a Symbol isn't supported yet\z/, error.message)
   end
 
   def test_a_namespaced_model_is_refused

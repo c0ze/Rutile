@@ -1,3 +1,5 @@
+require "set"
+
 module Rutile
   module Check
     # What docs/design.md rejects on sight: code whose meaning is only known
@@ -80,10 +82,27 @@ module Rutile
 
       include Nesting
 
-      def initialize(path, diagnostics, homes = {}, known = Set.new)
+      # Each finding in `source` as [message, start offset, end offset],
+      # in bytes: what the RuboCop plugin reports. Only this file's
+      # namespaces are known.
+      def self.findings(source, path = "(source)")
+        result = Prism.parse(source)
+        return [] if result.failure?
+
+        known = Set.new
+        Namespaces.new(known).visit(result.value)
+        found = []
+        new(path, nil, {}, known) { |message, node| found << [message, node.location.start_offset, node.location.end_offset] }
+          .visit(result.value)
+        found
+      end
+
+      # Findings go to `diagnostics`, or to the block with their node.
+      def initialize(path, diagnostics, homes = {}, known = Set.new, &on_finding)
         super()
         @path = path
         @diagnostics = diagnostics
+        @on_finding = on_finding
         @homes = homes
         @known = known
         @nesting = []
@@ -207,7 +226,10 @@ module Rutile
       end
 
       def report(node, what, fix)
-        @diagnostics.problem("#{@path}:#{node.location.start_line}: #{what} can't be compiled; use #{fix}")
+        message = "#{what} can't be compiled; use #{fix}"
+        return @on_finding.call(message, node) if @on_finding
+
+        @diagnostics.problem("#{@path}:#{node.location.start_line}: #{message}")
       end
     end
   end

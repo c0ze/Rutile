@@ -21,10 +21,30 @@ module Rutile
           receiver = settle([receiver], :read).first
           return Code["#{ctx_recv}[#{receiver.rust}].#{Names.method(name)}()", T::BOOL, :read]
         end
+        query = @app.column_type(model, name.delete_suffix("?")) if name.end_with?("?") && args.empty?
+        return query_attribute(receiver, name.delete_suffix("?"), query) if query
+
         assoc = @app.association(model, name)
         return association(receiver, model, assoc, node) if assoc && args.empty?
 
         record_method(receiver, node, model, name, args)
+      end
+
+      # `active?`: Rails' query_attribute. nil and false are false; a String
+      # must not be blank, a number not zero.
+      def query_attribute(receiver, attribute, type)
+        receiver = settle([receiver], :read).first
+        field = "#{ctx_recv}[#{receiver.rust}].#{attribute}"
+        rust = case type.kind
+               when :bool then "#{field} == Some(true)"
+               when :str
+                 @uses.rt("Blank")
+                 "#{field}.as_deref().is_some_and(|value| !value.is_blank())"
+               when :int then "#{field}.is_some_and(|value| value != 0)"
+               when :float then "#{field}.is_some_and(|value| value != 0.0)"
+               else "#{field}.is_some()"
+               end
+        Code[rust, T::BOOL, :read]
       end
 
       def write_attribute(receiver, attribute, type, arg, node) = write_value(receiver, attribute, type, expr(arg), node)
@@ -80,7 +100,7 @@ module Rutile
         inner = receiver.type.inner
         case name
         when "nil?" then return Code["#{receiver.rust}.is_none()", T::BOOL, receiver.ctx]
-        when "to_s" then return inner == T::STR ? Code["#{receiver.rust}.unwrap_or_default()", T::STR, receiver.ctx, hint: receiver.hint] : nil
+        when "to_s" then return inner == T::STR ? Code["#{owned(receiver)}.unwrap_or_default()", T::STR, receiver.ctx, hint: receiver.hint] : nil
         when "present?", "blank?"
           if inner == T::STR
             @uses.rt("Blank")
@@ -121,6 +141,7 @@ module Rutile
         when "find" then find_in(receiver, model, args, node)
         when "include?" then include_in(receiver, model, args, node)
         when "sanitize_sql_like" then sanitize_like(args, node)
+        when *Calculations::METHODS then calculation(receiver, model, name, args, node)
         else scope_call(receiver, model, name, node, args)
         end
       end
@@ -223,14 +244,16 @@ module Rutile
         Code["#{function}()", T::DATE]
       end
 
-      def on_str(receiver, _node, name, args)
+      def on_str(receiver, node, name, args)
         return nil unless args.empty?
+        # A Symbol's `to_s` is a String; its `downcase` is another Symbol.
+        return Code[receiver.rust, T::STR, receiver.ctx, **receiver.extra.except(:symbol)] if name == "to_s"
+        unsupported!(node, "#{name} on a Symbol") if receiver.extra[:symbol]
 
         case name
         when "strip", "downcase", "upcase"
           @uses.rt("RubyString")
           Code["#{receiver.rust}.#{name}()", T::STR, receiver.ctx, hint: receiver.hint]
-        when "to_s" then receiver
         when "present?", "blank?"
           @uses.rt("Blank")
           Code["#{receiver.rust}.#{Names.method(name)}()", T::BOOL, receiver.ctx]

@@ -12,7 +12,13 @@ module Rutile
         @manifest = manifest
         @diagnostics = diagnostics
         @source = Source.new(root)
+        @fallbacks = Set.new
       end
+
+      # Where the build fell back to Value: `path:line: what falls back to Value`.
+      def fallbacks = @fallbacks.sort_by { |message| [message[/\A[^:]+/], message[/:(\d+):/, 1].to_i, message] }
+
+      def fallback(path, node, message) = @fallbacks << "#{path}:#{node.location.start_line}: #{message}"
 
       attr_reader :diagnostics
 

@@ -1,0 +1,5 @@
+alices_kettle:
+  order: alices
+  product: kettle
+  quantity: 1
+  unit_price_cents: 2500

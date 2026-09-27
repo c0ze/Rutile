@@ -1,5 +1,5 @@
 require_relative "../lib/rutile/unbundled"
-require_relative "support/servers"
+require_relative "../lib/rutile/verify"
 
 # A throwaway Postgres cluster under tmp/pg for the example app, using the
 # PostgreSQL that mise.toml pins. It never touches a system server.
@@ -51,6 +51,7 @@ namespace :example do
   # Rutile's own tests introspect the blog, whatever EXAMPLE says.
   task(blog_db: "pg:start") { prepare_database(File.expand_path("../examples/blog", __dir__)) }
   task(tracker_db: "pg:start") { prepare_database(File.expand_path("../examples/tracker", __dir__)) }
+  task(store_db: "pg:start") { prepare_database(File.expand_path("../examples/store", __dir__)) }
 
   desc "Check the example app for anything rutile build can't compile"
   task check: :db do
@@ -64,29 +65,17 @@ namespace :example do
   desc "Generate the example app's Rust crate into RustOnRails/examples/EXAMPLE"
   task build: :db do
     require_relative "../lib/rutile"
-    rust = RUST_DIR
     clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
-    Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples", EXAMPLE), runtime: rust, name: EXAMPLE,
-                      env: "test", vars: clean)
-    puts "generated #{File.join(rust, "examples", EXAMPLE, "src")}"
+    fallbacks = Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(RUST_DIR, "examples", EXAMPLE), runtime: RUST_DIR, name: EXAMPLE,
+                                  env: "test", vars: clean)
+    puts fallbacks
+    puts "generated #{File.join(RUST_DIR, "examples", EXAMPLE, "src")}"
   end
 
   desc "Run the example app's integration tests against the Rust port"
   task verify: :build do
-    rust = RUST_DIR
-    port = ENV.fetch("VERIFY_PORT", "54400")
-    Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE }
-    env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",
-            "WORKERS" => "4" }
-    ExampleServers.ensure_port_free(port)
-    server = spawn(env, ExampleServers.release_binary(rust, EXAMPLE))
-    begin
-      ExampleServers.wait_for_up("http://127.0.0.1:#{port}/up", server)
-      target = { "RUTILE_TARGET" => "http://127.0.0.1:#{port}", "PARALLEL_WORKERS" => "1" }
-      Dir.chdir(EXAMPLE_APP) { Rutile.unbundled { sh(EXAMPLE_ENV.merge(target), "bin/rails", "test", "test/integration") } }
-    ensure
-      ExampleServers.stop_all([server])
-    end
+    passed = Rutile::Verify.run(app_dir: EXAMPLE_APP, crate: File.join(RUST_DIR, "examples", EXAMPLE), vars: EXAMPLE_ENV)
+    abort "verify failed for #{EXAMPLE}" unless passed
   end
 
   desc "Run the example app's own test suite"

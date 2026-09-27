@@ -83,6 +83,9 @@ module Rutile
       def std(path) = @std << path
       def rt(*names) = @rt.merge(names)
       def model(*names) = @models.merge(names)
+
+      # A model file defines its own model, so never imports it.
+      def drop_model(name) = @models.delete(name)
       def line(text) = (@lines << text unless @lines.include?(text))
 
       # A `const` item; false when the name already holds a different one.
@@ -96,6 +99,13 @@ module Rutile
         @models.merge(other.model_names)
         other.extra_lines.each { line(_1) }
         other.constants.all? { |name, item| constant(name, item) }
+      end
+
+      # What's collected so far, to go back to with `restore`.
+      def snapshot = [@std, @rt, @models, @constants, @lines].map(&:dup)
+
+      def restore(snapshot)
+        @std, @rt, @models, @constants, @lines = snapshot.map(&:dup)
       end
 
       # Whatever spelling `type` in a signature needs.

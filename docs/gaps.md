@@ -52,8 +52,8 @@ Round 5, model macros, model methods and blocks:
 
 Each of these is refused with the file and line rather than compiled wrong. They're the constructs this round met and left for later, roughly in the order a typical Rails app would hit them.
 
-- **Methods with parameters**, on models and in controllers. They need the design's rbs-inline signatures (Types, layer 3); inferring from call sites would be whole-program inference.
-- **Blocks other than `map` over a relation**: `each`, `select`, `sum`, `find_each`, `map(&:name)`, numbered and `it` parameters, and `map` over a list `map` returned.
+- **Methods that call themselves**, directly or through another. Ruby stops a runaway recursion with SystemStackError; a Rust stack overflow would abort the server. (Methods with parameters compile since 0.6.0, typed by rbs-inline signatures.)
+- **Blocks with more than one parameter** (`each_with_index`, `each_with_object`, hashes), `any?`/`all?`/`count` with a block, `min`/`max`/`average` of an array, `/` and `%`. (`each`, `select`, `reject`, `sum`, `find_each`, `map(&:name)`, `it` and `_1`, aggregates and transactions compile since 0.7.0.)
 - **Callbacks**: `after_initialize` and `after_find` blocks or methods of the app's own; `saved_change_to_x?` (the runtime keeps the changes a save will make, not those it made); callback conditions naming an app method.
 - **Normalizers** on columns other than strings, with `apply_to_nil`, more than one on an attribute, with `it` or numbered parameters, or ones that could fail.
 - **Methods Rails itself calls**: a model method replacing one of Active Record's (`destroy`, `readonly?`, `self.generate_unique_secure_token`), or a column's or association's reader. Rutile only controls its own call sites, so RustOnRails would call its own.
@@ -62,5 +62,14 @@ Each of these is refused with the file and line rather than compiled wrong. They
 
 ## Runtime differences only verify can catch
 
+- The Value fallback raises where Ruby would go on for a few operations it doesn't carry out: `Date - Date` (a Rational in Ruby), `Date ± 1.5`, `String#%` (Ruby's `format`), and a Date or Time past chrono's range (about ±262,000 years), which Ruby's reaches.
+- A param holding an array or a hash raises when it's read as a value (`params[:ids]` given `[1, 2]`), where Rails hands the array or hash on: a Value holds only scalars, and nil would answer `present?`, `==` and `render` differently.
+- `Time + Float` keeps microseconds, so a fraction of a microsecond rounds where Ruby's Rational time wouldn't.
+
+- An association doesn't keep the children built on it: `order.line_items.build(...)` then `order.line_items.size` counts the saved rows only, where Rails adds the unsaved one.
+- `find_each` queries one batch at a time, but the records it loads stay in the request's `Ctx` until the request ends, since a handle into them may live on.
+- Two locals naming one relation (`b = a`) are two copies here: loading one doesn't load the other, where in Ruby they are one object.
+
 - The tracker's tests exercise the JSON formats of dates and times, error message order, `ILIKE` against Rails' SQL, token length and email normalization, and they pass. Other apps will exercise more.
+- `record.update!(attributes)` on a nil record reads the record before the attributes, so with `@product` nil and the params missing, Rust answers 500 (NoMethodError) where Rails answers 400 (ParameterMissing). Both are errors; only the status differs.
 - Where RustOnRails doesn't copy Rails, it fails rather than guess: a date string in a format only `Date._parse` reads is a cast error (a 500), not a date or nil. One case stays silent: after params assign a numeric column a value that isn't an integer ("1.5"), app code writing back exactly its cast (1) leaves numericality checking "1.5", where Rails checks 1.
