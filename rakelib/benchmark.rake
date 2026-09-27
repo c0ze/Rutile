@@ -1,5 +1,5 @@
 require "net/http"
-require "shellwords"
+require "open3"
 require_relative "../lib/rutile/unbundled"
 require_relative "support/servers"
 
@@ -15,7 +15,7 @@ require_relative "support/servers"
 namespace :example do
   desc "Benchmark the example app on Rails and on the Rust port"
   task benchmark: :build do
-    rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
+    rust = RUST_DIR
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE, "-p", "loadgen" }
     loadgen = ExampleServers.release_binary(rust, "loadgen")
     bench = BENCHMARKS.fetch(EXAMPLE) { abort "no benchmark for EXAMPLE=#{EXAMPLE}" }
@@ -33,7 +33,7 @@ namespace :example do
         url = "http://127.0.0.1:#{port}#{path}"
         system(loadgen, url, "10", "3", *bench[:headers], out: File::NULL, exception: true) # warm up
         ENV.fetch("RUNS", "1").to_i.times do
-          result = `#{[loadgen, url, "10", "10", *bench[:headers]].shelljoin}`.strip
+          result = capture!(loadgen, url, "10", "10", *bench[:headers])
           puts format("%-5s %-26s %s  memory %d MiB", name, bench[:label].(path), result, memory_mib(pid))
         end
       end
@@ -86,7 +86,14 @@ def load_rows(script)
   end
 end
 
-def sql(query) = `psql -h localhost -p #{PG_PORT} -U postgres -d #{EXAMPLE}_test -Atc #{query.shellescape}`.strip
+def sql(query) = capture!("psql", "-h", "localhost", "-p", PG_PORT, "-U", "postgres", "-d", "#{EXAMPLE}_test", "-Atc", query)
+
+# What the command printed, stripped; it failing fails the benchmark.
+def capture!(*command)
+  out, status = Open3.capture2(*command)
+  abort "#{command.first} failed (#{status})" unless status.success?
+  out.strip
+end
 
 def first_id(table) = sql("SELECT id FROM #{table} ORDER BY id LIMIT 1")
 

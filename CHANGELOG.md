@@ -12,6 +12,10 @@ From an audit of both repositories, reviewed by independent reviewers:
 - `rutile check` also catches code beside a model's class, `require` there, reopening a class by `send`, `class <<` or `refine`, reflection, and patches to app classes or Rails from initializers and `lib/`.
 - `rutile check` and `build` work in development, where Rails adds routes of its own.
 - Verify fails when no request reached the Rust server, returns every response header, and finds the binary wherever Cargo built it.
+- `rutile check` reports Rails classes reopened by path (`class ActiveRecord::Base`, `module ActiveRecord; class Base`), and routes to an action a controller inherits (a public method of `ApplicationController`) or to `ApplicationController` itself.
+- A missing `rustfmt` or `cargo`, a manifest that isn't JSON, and a model on a database view are reported instead of ending in a backtrace.
+- A rebuild with a different `--runtime` updates `Cargo.toml`'s path to it; the rest of the file stays the user's.
+- The rake tasks and tests read `RUSTONRAILS_DIR` as the CLI does, relative to where they were run. `rake example:benchmark` fails when the load generator or `psql` does, and runs neither through a shell.
 - Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MIN_RATE`, `MAX_BODY_BYTES`).
 
 ## 0.5.0

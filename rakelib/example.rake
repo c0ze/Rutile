@@ -9,6 +9,11 @@ PG_PORT = ENV.fetch("BLOG_DB_PORT", "54329")
 EXAMPLE = ENV.fetch("EXAMPLE", "blog")
 EXAMPLE_APP = File.expand_path("../examples/#{EXAMPLE}", __dir__)
 
+# RustOnRails beside this repository, or RUSTONRAILS_DIR, read relative to
+# where rake was run as the CLI reads it relative to the current directory.
+RUST_DIR = File.expand_path(ENV.fetch("RUSTONRAILS_DIR") { File.expand_path("../../RustOnRails", __dir__) },
+                            Rake.original_dir)
+
 # Connection URLs exported for another project would override database.yml
 # and point db:prepare and fixture loading at that project's database.
 EXAMPLE_ENV = { "RAILS_ENV" => "test", "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }.freeze
@@ -59,7 +64,7 @@ namespace :example do
   desc "Generate the example app's Rust crate into RustOnRails/examples/EXAMPLE"
   task build: :db do
     require_relative "../lib/rutile"
-    rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
+    rust = RUST_DIR
     clean = { "CI" => nil, "DATABASE_URL" => nil, "PRIMARY_DATABASE_URL" => nil }
     Rutile::Build.run(app_dir: EXAMPLE_APP, out: File.join(rust, "examples", EXAMPLE), runtime: rust, name: EXAMPLE,
                       env: "test", vars: clean)
@@ -68,7 +73,7 @@ namespace :example do
 
   desc "Run the example app's integration tests against the Rust port"
   task verify: :build do
-    rust = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", "../../RustOnRails"), __dir__)
+    rust = RUST_DIR
     port = ENV.fetch("VERIFY_PORT", "54400")
     Dir.chdir(rust) { sh "cargo", "build", "--release", "-p", EXAMPLE }
     env = { "DATABASE_URL" => "postgres://postgres@localhost:#{PG_PORT}/#{EXAMPLE}_test", "BIND" => "127.0.0.1:#{port}",

@@ -10,17 +10,12 @@ Known defects and loose ends in the compiler and its tooling, kept here until th
 
 ## rutile check
 
-- **A Rails class reopened in path form** in an initializer or `lib/` (`class ActiveRecord::Base ... end`, or `module ActiveRecord; class Base`) isn't reported; the call form (`ActiveRecord::Base.include(...)`) is. Introspection's overrides also stop at `ActiveRecord::Base`, so a patched `destroy` there compiles as the stock one.
-- **A public method of `ApplicationController` routed as an action** reports clean, and `rutile build` then fails at `cargo check`.
-- **Crashes instead of a report**: a missing `rustfmt` or `cargo`, or a `--manifest` that isn't valid JSON, prints a backtrace (the exit code is still 1). `Diagnostics#attempt` catches only `Unsupported`, so a model backed by a view, which has no table in the manifest, ends `rutile check` with a `NoMethodError`.
+- **`rutile build` doesn't run the source rules.** A patch to Rails or an app class in an initializer or `lib/` is reported by `rutile check` only; `rutile build` never reads those files, and introspection's overrides stop at `ActiveRecord::Base`, so a patched `destroy` there compiles as the stock one if check is skipped.
 
 ## Verify and the rake tasks
 
 - **Verify runs `test/integration` only.** Model tests aren't run against the Rust build.
 - **Fixtures reload before each test only for tables with a fixture file**, since transactional tests are off under verify. A table without one keeps rows from earlier tests.
-- **`RUSTONRAILS_DIR`** is resolved against `rakelib/` in the rake tasks but against the current directory by the CLI.
-- **`rake example:benchmark`** ignores the load generator's exit status, and its psql setup interpolates `EXAMPLE` and `PG_PORT` into a shell string and ignores failures.
-- **`rutile build` writes `Cargo.toml` only when it's missing**, so building with a different `--runtime` keeps the old path.
 
 ## On hold
 
