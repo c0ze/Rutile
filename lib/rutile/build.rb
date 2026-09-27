@@ -13,10 +13,13 @@ module Rutile
       def self.at(path, node, what) = new("#{path}:#{node.location.start_line}: #{what} isn't supported yet")
     end
 
-    # Introspects the app (unless handed a manifest) and writes the crate.
+    # Introspects the app (unless handed a manifest), refuses what `rutile
+    # check`'s source rules report, and writes the crate.
     def self.run(app_dir:, out:, runtime:, name: File.basename(app_dir), manifest: nil, env: "development", vars: {})
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
-      Crate.new(App.new(app_dir, read_manifest(manifest)), out, name:, runtime:).write
+      app = App.new(app_dir, read_manifest(manifest))
+      Check.source!(app_dir, app)
+      Crate.new(app, out, name:, runtime:).write
     end
 
     def self.read_manifest(path)
@@ -57,3 +60,4 @@ require_relative "build/controller_file"
 require_relative "build/application_controller_file"
 require_relative "build/routes_file"
 require_relative "build/crate"
+require_relative "check"

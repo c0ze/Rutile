@@ -15,11 +15,24 @@ module Rutile
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
       diagnostics = Build::Diagnostics.new
       app = Build::App.new(app_dir, Build.read_manifest(manifest), diagnostics:)
-      Rules.scan(app_dir, diagnostics, homes: homes(app))
-      Gems.check(app.manifest, diagnostics)
+      source(app_dir, app, diagnostics)
       Files.check(app_dir, diagnostics)
       Build::Crate.new(app, app_dir, name: File.basename(app_dir), runtime: app_dir).files
       diagnostics
+    end
+
+    # What no translation can see: the design's source rules over app/,
+    # lib/ and the initializers, and gems that change Rails at runtime.
+    def source(app_dir, app, diagnostics)
+      Rules.scan(app_dir, diagnostics, homes: homes(app))
+      Gems.check(app.manifest, diagnostics)
+    end
+
+    # rutile build's gate: every such problem, before anything is written.
+    def source!(app_dir, app)
+      diagnostics = Build::Diagnostics.new
+      source(app_dir, app, diagnostics)
+      raise Build::Unsupported, diagnostics.problems.join("\n") unless diagnostics.problems.empty?
     end
 
     # Each app model and controller's own file. ApplicationRecord is

@@ -36,6 +36,8 @@ Prism parses every file under `app/` and `lib/`. A rule set rejects what can't c
 
 Each finding is one line, `path:line: message`, sorted by file and line; notes come after problems, and a count ends the report. Problems make it exit 1; notes don't.
 
+`rutile build` runs the same rules and gem check before it translates anything, and refuses the app with every problem they report: a patch in an initializer or `lib/` is never translated, so only these rules can see it.
+
 The same rules should also ship as a RuboCop plugin so editors flag problems while you type. That can come later.
 
 ### 2. Introspect
@@ -64,7 +66,7 @@ Scope bodies are Ruby lambdas, so the manifest records their source location and
 - **Records compare as Active Record does:** `==` between records is `Ctx::same_record`, the same id, since the same row loaded twice is two handles. A Symbol never equals a String, so comparing one with the other is refused.
 - **Everything else** raises `Unsupported` with the file and line: calls the translator doesn't know, `around_*` callbacks, calling a `before_action` that renders from another method (its response would be lost), route requirements and `via: :all`, validator options beyond the common ones, scope parameters it can't type, code beside the class in a model or controller file. So does anything that would compile and behave differently: single-table inheritance, optimistic locking, defaults the model sets (`enum ..., default:`), a time zone other than UTC, a locale other than `en` or reworded validation messages.
 
-`rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` only when it's missing, so a crate's own tests and dependencies survive a rebuild. The example crate lives at `RustOnRails/examples/blog`; its tests are hand-written.
+`rutile build` owns `OUT/src/` and writes `OUT/Cargo.toml` when it's missing; after that it only moves the path to the runtime when `--runtime` changes, so a crate's own tests and dependencies survive a rebuild. The example crate lives at `RustOnRails/examples/blog`; its tests are hand-written.
 
 Not built yet: the `Value` fallback and rbs-inline signatures (neither example needs them; code that would is reported as unsupported), so methods and helpers with parameters are refused; blocks other than `map`.
 

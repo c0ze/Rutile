@@ -6,10 +6,6 @@ Known defects and loose ends in the compiler and its tooling, kept here until th
 
 - **Regexps Rust can't parse** (a `\p{...}` name Rust doesn't know, for one) still pass `rutile build`, since `cargo check` doesn't parse regexps. The server builds every model's validations when it starts, so it stops there, naming the model's file, rather than on a request.
 
-## rutile check
-
-- **`rutile build` doesn't run the source rules.** A patch to Rails or an app class in an initializer or `lib/` is reported by `rutile check` only; `rutile build` never reads those files, and introspection's overrides stop at `ActiveRecord::Base`, so a patched `destroy` there compiles as the stock one if check is skipped.
-
 ## Verify and the rake tasks
 
 - **Verify runs `test/integration` only.** Model tests call the Ruby models in the test's own process, so there's nothing to forward to the Rust build; they'd need a way to call the compiled models directly.
