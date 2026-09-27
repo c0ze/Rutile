@@ -8,7 +8,7 @@ class ManifestTest < Minitest::Test
   EXE = File.expand_path("../../exe/rutile", __dir__)
 
   def test_header
-    assert_equal 4, manifest["manifest_version"]
+    assert_equal 5, manifest["manifest_version"]
     assert_equal "8.1.4", manifest["rails_version"]
     assert_equal RUBY_VERSION, manifest["ruby_version"]
   end
@@ -16,9 +16,12 @@ class ManifestTest < Minitest::Test
   def test_config
     assert_equal(
       { "api_only" => true, "time_zone" => "UTC", "default_locale" => "en", "active_record_default_timezone" => "utc",
-        "error_message_files" => [] },
-      manifest["config"]
+        "error_message_files" => [], "session" => nil, "cookies_same_site" => "lax", "force_ssl" => false, "assume_ssl" => false,
+        "ssl_options" => { "hsts" => { "subdomains" => true } } },
+      manifest["config"].except("default_headers")
     )
+    assert_equal %w[X-Frame-Options X-XSS-Protection X-Content-Type-Options X-Permitted-Cross-Domain-Policies Referrer-Policy],
+                 manifest["config"]["default_headers"].map(&:first)
   end
 
   def test_no_machine_specific_paths

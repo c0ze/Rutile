@@ -15,7 +15,7 @@ module Rutile
         when :list then "Vec<#{inner.rust}>"
         else { str: "String", int: "i64", float: "f64", bool: "bool", time: "Time", date: "Date", value: "Value", json: "Json",
                attributes: "Attributes", record_invalid: "RecordInvalid", invalid_record: "RecordInvalid",
-               unit: "()" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
+               unit: "()", html: "String" }.fetch(kind) { raise Error, "no Rust type for #{kind}" }
         end
       end
     end
@@ -29,6 +29,8 @@ module Rutile
       def self.errors(model) = Type.new(kind: :errors, model:, inner: nil)
       def self.where_chain(model) = Type.new(kind: :where_chain, model:, inner: nil)
       def self.klass(model) = Type.new(kind: :class, model:, inner: nil)
+      # An Active Job class; `model` names it.
+      def self.job(name) = Type.new(kind: :job, model: name, inner: nil)
       def self.nilable(inner) = Type.new(kind: :nilable, model: nil, inner:)
       # What `map` with a block gives: a Vec.
       def self.list(inner) = Type.new(kind: :list, model: nil, inner:)
@@ -44,6 +46,8 @@ module Rutile
       PARAMS = self[:params]
       UNIT = self[:unit]
       RESPONSE = self[:response]
+      # An html_safe String: a helper's tag, `raw`, what content_for holds.
+      HTML = self[:html]
       REQUEST = self[:request]
       QUERY = self[:query]
       JSON_OPT = self[:json_opt]
@@ -55,6 +59,8 @@ module Rutile
       RECORD_INVALID = self[:record_invalid]
       INVALID_RECORD = self[:invalid_record]
       HEADERS = self[:headers]
+      SESSION = self[:session]
+      COOKIES = self[:cookies]
       NIL = self[:nil]
       COND = self[:cond]
     end

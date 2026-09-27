@@ -25,6 +25,35 @@ From an audit of both repositories, reviewed by independent reviewers:
 - From a second review of the merge: `find_each` refuses every keyword but `batch_size:` (`start:` was dropped, walking rows Ruby wouldn't); a Symbol stays a Symbol when an earlier call makes it a local; a transaction block's Value is nil after a rollback and false or nil stays falsy; an Integer becomes `Value::Int`, not an `i32` literal; `rutile package` refuses an `--out` that overlaps the crate or the runtime, or that it didn't write, before deleting anything.
 - Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MIN_RATE`, `MAX_BODY_BYTES`).
 
+## 0.10.0
+
+Sessions, jobs and views (`feature/sessions-jobs-views`): a Rails app's cookie session, its Sidekiq jobs and its ERB pages, compiled.
+
+- **Sessions and cookies:**
+  - `session[:key]`, `session[:key] =`, `session.delete` and `reset_session` compile on Rails' cookie store, with the cookie name introspected from the middleware.
+  - `cookies[:name]` reads and writes plain cookies.
+  - With the app's `SECRET_KEY_BASE`, Rails and the binary read each other's session cookies.
+  - The store keeps a cart in the session. One of its tests hands the cookie from Rails to the binary and back.
+- **Jobs:**
+  - An Active Job class on the Sidekiq adapter compiles to `src/jobs/<job>.rs`, typed by its `perform`'s rbs-inline signature.
+  - `perform_later` pushes the payload Sidekiq 8's adapter pushes, key for key; `perform_now` runs the job in place.
+  - The binary's `work [--once]` is a Sidekiq worker for the app's queues, with Sidekiq's retry and dead sets.
+  - The store restocks through `RestockJob`. Its tests pass jobs between Rails and the binary both ways.
+- **Views:**
+  - Introspection compiles each `app/views` template with Rails' own ERB handler, and the build translates the Ruby it makes, so Rails' trimming and escaping carry over.
+  - Full-stack controllers (`ActionController::Base`) render templates in layouts: implicitly, or with `render :name`, a template path, `template:` or `action:`, and `status:`.
+  - View helpers: `link_to`, `content_for`, `provide`, `content_for?`, `yield :name`, `raw`, and a `_path` helper for each named route. Controllers can call the `_path` helpers too.
+  - The store gains a storefront whose five tests assert Rails' exact bytes, and the binary passes them.
+- From the branch's review:
+  - **Worker:** it survives panics, lost databases and lost Redis connections, and follows Sidekiq's retry options.
+  - **Pages:** they answer only requests that take HTML (406 otherwise). Errors follow the request's format, with the app's `public/<status>.html`. Responses carry Rails' default headers, `Vary: Accept` and, under `force_ssl`, HSTS.
+  - **Session cookie:** it keeps the store's options, refuses what it can't honour, and fails past 4 KB as Rails' does.
+  - **Refused:** `ApplicationJob`'s declarations and `queue_name_prefix`.
+- Also:
+  - `where.not` with a nilable value, or one read from a record.
+  - Manifests are read as UTF-8 whatever the locale.
+  - `rutile verify` gives the binary `REDIS_URL` and the tests `RUTILE_BINARY` and `RUTILE_DATABASE_URL`.
+
 ## 0.9.0
 
 Tooling (`feature/tooling`): from `rutile check` to a running container with `rutile` commands alone ([docs/deploy.md](docs/deploy.md)).

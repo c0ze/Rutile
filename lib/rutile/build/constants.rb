@@ -7,6 +7,7 @@ module Rutile
     # ApplicationRecord's. Each one read becomes a Rust `const` in the file.
     module Constants
       PARENTS = { controller: "app/controllers/application_controller.rb", model: "app/models/application_record.rb",
+                  job: "app/jobs/application_job.rb",
                   scope: "app/models/application_record.rb", normalizer: "app/models/application_record.rb" }.freeze
 
       private
@@ -18,6 +19,11 @@ module Rutile
 
         home = [@path, PARENTS[@env]].compact.uniq.find { assignments(_1).key?(name) }
         return class_constant(name, home, node) if home
+
+        return job_class(name, node) if @app.job(name)
+        if @app.manifest.dig("jobs", "classes")&.any? { _1["name"] == name }
+          unsupported!(node, "#{name} on the #{@app.manifest.dig("jobs", "adapter")} queue adapter; jobs run on Sidekiq's")
+        end
 
         unsupported!(node, "the constant #{name}") unless @app.model?(name)
         use_model(name)

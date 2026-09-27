@@ -107,8 +107,16 @@ module Rutile
       end
 
       def controllers = manifest.fetch("controllers")
+
+      # The Active Job classes, when Sidekiq runs them: what Rutile compiles.
+      def jobs = manifest.dig("jobs", "adapter") == "sidekiq" ? manifest.dig("jobs", "classes") : []
+      def job(name) = jobs.find { _1["name"] == name }
       def controller(name) = controllers.find { _1["name"] == name } || raise(Error, "no controller #{name}")
       def routes = manifest.fetch("routes")
+
+      # The app's templates by name (`storefront/index`), HTML ones only.
+      def views = manifest.fetch("views", [])
+      def view(name) = views.find { _1["name"] == name && _1["format"] == "html" && !_1["partial"] }
     end
   end
 end

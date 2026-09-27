@@ -127,18 +127,18 @@ module Rutile
         entries = pairs(args, node)
         # Rails negates the conjunction: NOT(a AND b), not NOT a AND NOT b.
         unsupported!(node, "where.not with more than one condition") if entries.size > 1
-        conditions = entries.map do |column, operand|
-          unsupported!(node, "where.not on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
-          code = value(operand)
-          if code.type == T::NIL
-            @uses.rt("Value")
-            next ".where_not(#{Names.str(column)}, Value::Nil)"
+        # The value is read after the relation, as Ruby reads it; nil (or
+        # a value that turns out nil) is IS NOT NULL.
+        receiver, conditions = after(receiver) do
+          entries.map do |column, operand|
+            unsupported!(node, "where.not on #{column}, which #{model} doesn't have") unless @app.column_type(model, column)
+            code = value(operand)
+            bindable!(code, node, "where.not")
+            [".where_not(#{Names.str(column)}, #{where_value(code)})", code]
           end
-
-          unsupported!(node, "where.not with #{describe(code.type)}") if code.type.nilable? || code.reads?
-          ".where_not(#{Names.str(column)}, #{owned(code)})"
         end
-        Code["#{receiver.rust}#{conditions.join}", T.relation(model), receiver.ctx, hint: receiver.hint]
+        Code["#{receiver.rust}#{conditions.map(&:first).join}", T.relation(model), touch(receiver, *conditions.map(&:last)),
+             hint: receiver.hint]
       end
     end
   end

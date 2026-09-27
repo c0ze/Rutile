@@ -27,7 +27,7 @@ module Rutile
     end
 
     def self.read_manifest(path)
-      manifest = JSON.parse(File.read(path))
+      manifest = JSON.parse(File.read(path, encoding: Encoding::UTF_8))
       version = manifest["manifest_version"] if manifest.is_a?(Hash)
       unless version == Introspect::MANIFEST_VERSION
         raise Error, "#{path}: manifest_version #{version.inspect}, where rutile #{VERSION} reads " \
@@ -60,6 +60,11 @@ require_relative "build/lists"
 require_relative "build/calculations"
 require_relative "build/transactions"
 require_relative "build/dynamic"
+require_relative "build/sessions"
+require_relative "build/scalars"
+require_relative "build/job_calls"
+require_relative "build/views"
+require_relative "build/paths"
 require_relative "build/expressions"
 require_relative "build/constants"
 require_relative "build/queries"
@@ -73,8 +78,10 @@ require_relative "build/model_methods"
 require_relative "build/behavior"
 require_relative "build/model_file"
 require_relative "build/rescues"
+require_relative "build/templates"
 require_relative "build/controller_file"
 require_relative "build/application_controller_file"
 require_relative "build/routes_file"
+require_relative "build/job_file"
 require_relative "build/crate"
 require_relative "check"

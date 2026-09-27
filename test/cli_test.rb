@@ -63,7 +63,7 @@ class CliTest < Minitest::Test
     File.write(path, JSON.generate(manifest))
     _out, err, status = Open3.capture3("ruby", EXE, "check", IntrospectHelper::APP, "--manifest", path)
     assert_equal 1, status.exitstatus
-    assert_equal "rutile check: #{path}: manifest_version 3, where rutile #{Rutile::VERSION} reads 4; introspect again\n", err
+    assert_equal "rutile check: #{path}: manifest_version 3, where rutile #{Rutile::VERSION} reads 5; introspect again\n", err
   end
 
   def test_check_prints_the_report_and_fails_on_problems

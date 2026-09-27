@@ -93,7 +93,7 @@ module Rutile
       # of the same name would shadow.
       FUNCTIONS = %w[action error_page error_response errors_json format_date format_time health local_today merge now
                      parse_query reason sanitize_sql_like sum_floats sum_integers today value_json div_integers mod_integers
-                     mod_floats].freeze
+                     mod_floats html_escape link_to path_segment].freeze
 
       # A parameter's Rust name: its own, unless Rust, the runtime or the
       # method's other names (`taken`) already mean something by it. `_`

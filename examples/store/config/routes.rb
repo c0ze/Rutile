@@ -9,6 +9,7 @@ Rails.application.routes.draw do
     end
     member do
       post :restock
+      post :restock_later
       get :quote
       get :availability
     end
@@ -21,6 +22,15 @@ Rails.application.routes.draw do
       get :summary
     end
   end
+
+  resource :cart, only: :show do
+    post :add
+    delete :clear
+  end
+
+  # The storefront's pages, in HTML.
+  get "shop" => "storefront#index", as: :shop
+  get "shop/:id" => "storefront#show", as: :shop_product
 
   get "up" => "rails/health#show", as: :rails_health_check
 end

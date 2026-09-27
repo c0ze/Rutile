@@ -3,7 +3,7 @@ require_relative "boot"
 require "rails"
 # Pick the frameworks you want:
 require "active_model/railtie"
-# require "active_job/railtie"
+require "active_job/railtie"
 require "active_record/railtie"
 # require "active_storage/engine"
 require "action_controller/railtie"
@@ -40,5 +40,13 @@ module Store
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
+
+    # A cart in the session: cookies and the cookie store, as a full-stack
+    # app has them.
+    config.middleware.use ActionDispatch::Cookies
+    config.middleware.use ActionDispatch::Session::CookieStore, key: "_store_session"
+
+    # Jobs go through Sidekiq, whose Redis Ruby and Rust workers share.
+    config.active_job.queue_adapter = :sidekiq
   end
 end

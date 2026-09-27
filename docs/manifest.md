@@ -16,7 +16,7 @@ Conventions:
 
 | Key | Meaning |
 |---|---|
-| `manifest_version` | format version, currently 4 |
+| `manifest_version` | format version, currently 5 |
 | `rails_version`, `ruby_version` | what the app booted with |
 | `config` | the settings below |
 | `gems` | the Gemfile's direct dependencies (below) |

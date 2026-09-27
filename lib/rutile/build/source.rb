@@ -9,6 +9,15 @@ module Rutile
 
       def tree(path) = parsed(path).value
 
+      # A template's Ruby, as Rails' handler compiled it, read as the
+      # template's own file: its lines are the template's.
+      def compiled(path, src)
+        # A layout yields at the top level, as Rails runs it inside a method.
+        @trees[path] ||= Prism.parse(src, partial_script: true).tap do |result|
+          raise Unsupported, "#{path}: #{result.errors.first.message}" if result.failure?
+        end
+      end
+
       # The file's comments, which carry rbs-inline signatures.
       def comments(path) = parsed(path).comments
 

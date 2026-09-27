@@ -119,6 +119,9 @@ module Rutile
       # is copied, since Ruby may read it again.
       def elements(node)
         receiver = expr(node.receiver)
+        # nil.each raises NoMethodError, as in Ruby: an instance variable
+        # a view iterates may be unset.
+        receiver = unwrap(receiver, node.name.to_s) if receiver.type.nilable?
         receiver = relation_receiver(receiver, node, node.name) unless receiver.type.kind == :list
         if receiver.type.kind == :relation
           need_ctx!(node)
@@ -147,7 +150,7 @@ module Rutile
       def loop_variable(node, element)
         name, = block_form(node)
         hint = element.kind == :record ? Names.snake(element.model) : "item"
-        reserved = [*Translator::KEYWORDS, *Names::FUNCTIONS, "ctx", "req", "self", @self_var]
+        reserved = [*Translator::KEYWORDS, *Names::FUNCTIONS, "ctx", "req", "self", @self_var, *("view" if view?)]
         name.nil? || %w[_1 it].include?(name) || reserved.include?(name) ? fresh(hint) : name
       end
 

@@ -36,6 +36,8 @@ module Rutile
       # it does. Ruby returns an operand; unless both are booleans, only the
       # result's truth is compiled (T::COND).
       def logic(node)
+        return html_or(node) if view? && node.is_a?(Prism::OrNode) && content_for_read?(node.left)
+
         left = expr(node.left)
         lines, right = capture { expr(node.right) }
         right_rust = group(truthy(right, node.right), right, logic: true)
@@ -172,8 +174,13 @@ module Rutile
       end
 
       # `rust` as the receiver of a method call, which binds tighter than
-      # an operator or an `if`.
-      def atom(rust, code) = code.extra[:arith] || rust.start_with?("if ") ? "(#{rust})" : rust
+      # an operator, a `!` or an `if`. Rust never warns about parentheses
+      # around a receiver, so any operator outside a closure's bars gets them.
+      def atom(rust, code)
+        loose = code.extra[:arith] || code.extra[:compared] || code.extra[:logic] || rust.start_with?("if ", "!") ||
+                rust.gsub(/\|[^|]*\|/, "").match?(/ (==|!=|<=|>=|<|>|&&|\|\||as) /)
+        loose ? "(#{rust})" : rust
+      end
 
       # `[a, b].max`: Integers only; Ruby raises comparing nil.
       def extremum(node, name)

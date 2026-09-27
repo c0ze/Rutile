@@ -59,11 +59,12 @@ class TargetTest < Minitest::Test
   # A wrong Location or a missing cookie is only visible if the header
   # comes back; the connection's own headers don't.
   def test_returns_the_response_headers_but_the_connection_s
-    reply = "HTTP/1.1 302 Found\r\nLocation: /posts/1\r\nSet-Cookie: a=1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    reply = "HTTP/1.1 302 Found\r\nLocation: /posts/1\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     server = RecordingServer.new(reply)
     _, headers, = Rutile::Verify::Target.new("http://127.0.0.1:#{server.port}").call(Rack::MockRequest.env_for("/old"))
     server.join
-    assert_equal({ "location" => "/posts/1", "set-cookie" => "a=1" }, headers)
+    # Each cookie is its own header, which Rack 3 takes as an array.
+    assert_equal({ "location" => "/posts/1", "set-cookie" => %w[a=1 b=2] }, headers)
   end
 
   # Net::HTTP asks for compression on its own and inflates what comes back;
