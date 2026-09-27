@@ -248,6 +248,7 @@ module Rutile
         end
         # design.md: `send(:title)` is a direct call to `title`.
         if SENDS.include?(name) && (args.first.is_a?(Prism::SymbolNode) || args.first.is_a?(Prism::StringNode))
+          public_only!(node, args.first.unescaped) if name == "public_send"
           name = args.first.unescaped
           args = args.drop(1)
         end
@@ -276,6 +277,22 @@ module Rutile
         when :controller then controller_call(node, name, args) || unsupported!(node, "#{name} in a controller")
         else unsupported!(node, name)
         end
+      end
+
+      # `public_send(:name)` on self raises NoMethodError in Ruby when the
+      # class declares `name` private, where the direct call it compiles to
+      # would reach it. On another receiver a private method is refused as
+      # it would be called directly.
+      def public_only!(node, name)
+        return unless node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode)
+
+        paths = case @env
+                when :model then [@app.model_path(@model)]
+                when :controller then [@controller.path, ControllerFile::APPLICATION].uniq
+                else []
+                end
+        found = paths.lazy.filter_map { @app.model_methods.visibility(_1, name) }.first
+        unsupported!(node, "public_send of the #{found} method #{name}") if found && found != :public
       end
 
       def send_to(receiver, node, name, args)

@@ -16,7 +16,7 @@ module Rutile
         app.controllers.reject { _1["actions"].empty? || _1["name"] == "ApplicationController" }.map { new(app, _1["name"]) }
       end
 
-      attr_reader :name
+      attr_reader :name, :path
 
       def initialize(app, name)
         @app = app

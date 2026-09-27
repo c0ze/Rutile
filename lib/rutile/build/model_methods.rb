@@ -43,6 +43,13 @@ module Rutile
 
       def private?(model, name) = definition(model, name)&.last != :public
 
+      # How the class at `path` declares `name`, a def or an attr_reader:
+      # :public, :private or :protected, or nil if it doesn't.
+      def visibility(path, name)
+        defs, readers, named = declared(path)
+        defs[name.to_s]&.last || readers[name.to_s] || named[name.to_s]
+      end
+
       # Every public method but the callbacks, for the model file.
       def publics(model)
         visibilities(@app.model_path(model)).select { |name, (_, v)| v == :public && !hook?(model, name) }.keys
@@ -124,28 +131,57 @@ module Rutile
       # name => [def node, visibility] for the defs in the file's class
       # body, following `private` and `private def ...`. Singleton methods
       # aren't instance methods.
-      def visibilities(path)
+      def visibilities(path) = declared(path).first
+
+      # The class body's defs, its readers (attr_reader and attr_accessor)
+      # and the names `private :name` sets for neither, which are inherited
+      # methods, in one pass: `private :name` and `public %i[name]` change
+      # any of them, and `private attr_reader :x` declares a reader.
+      def declared(path)
         @visibilities[path] ||= begin
-          classes = Declarations.classes(@app.source.tree(path))
-          body = classes.size == 1 ? classes.first.body : nil
+          defs = {}
+          readers = {}
+          named = {}
           current = :public
-          (body.is_a?(Prism::StatementsNode) ? body.body : []).each_with_object({}) do |node, found|
+          class_body(path).each do |node|
             if node.is_a?(Prism::DefNode) && node.receiver.nil?
-              found[node.name.to_s] = [node, current]
+              defs[node.name.to_s] = [node, current]
+            elsif attr?(node)
+              attr_names(node).each { readers[_1] = current }
             elsif node.is_a?(Prism::CallNode) && node.receiver.nil? && %i[private protected public].include?(node.name)
               args = node.arguments&.arguments || []
               current = node.name if args.empty?
               args.flat_map { _1.is_a?(Prism::ArrayNode) ? _1.elements : [_1] }.each do |arg|
-                case arg
-                when Prism::DefNode then found[arg.name.to_s] = [arg, node.name]
-                when Prism::SymbolNode, Prism::StringNode
-                  found[arg.unescaped] = [found[arg.unescaped].first, node.name] if found[arg.unescaped]
+                if arg.is_a?(Prism::DefNode)
+                  defs[arg.name.to_s] = [arg, node.name]
+                elsif attr?(arg)
+                  attr_names(arg).each { readers[_1] = node.name }
+                elsif arg.is_a?(Prism::SymbolNode) || arg.is_a?(Prism::StringNode)
+                  name = arg.unescaped
+                  if defs[name] then defs[name] = [defs[name].first, node.name]
+                  elsif readers[name] then readers[name] = node.name
+                  else named[name] = node.name
+                  end
                 else raise Unsupported.at(path, node, "#{node.name} with an argument that isn't a name or a def")
                 end
               end
             end
           end
+          [defs, readers, named]
         end
+      end
+
+      def attr?(node) = node.is_a?(Prism::CallNode) && node.receiver.nil? && %i[attr_reader attr_accessor].include?(node.name)
+
+      def attr_names(node)
+        (node.arguments&.arguments || []).filter_map { _1.unescaped if _1.is_a?(Prism::SymbolNode) || _1.is_a?(Prism::StringNode) }
+      end
+
+      # The statements of the file's one class body.
+      def class_body(path)
+        classes = Declarations.classes(@app.source.tree(path))
+        body = classes.size == 1 ? classes.first.body : nil
+        body.is_a?(Prism::StatementsNode) ? body.body : []
       end
     end
   end

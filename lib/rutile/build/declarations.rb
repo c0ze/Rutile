@@ -16,7 +16,7 @@ module Rutile
         outside(app, path)
         classes(app.source.tree(path)).each do |klass|
           statements = klass.body.is_a?(Prism::StatementsNode) ? klass.body.body : [klass.body].compact
-          statements.each do |node|
+          unwrapped(statements).each do |node|
             app.attempt do
               next if node.is_a?(Prism::DefNode) || node.is_a?(Prism::ConstantWriteNode)
 
@@ -49,7 +49,17 @@ module Rutile
       def calls(tree, name)
         classes(tree).flat_map do |klass|
           statements = klass.body.is_a?(Prism::StatementsNode) ? klass.body.body : []
-          statements.select { _1.is_a?(Prism::CallNode) && _1.receiver.nil? && _1.name.to_s == name }
+          unwrapped(statements).select { _1.is_a?(Prism::CallNode) && _1.receiver.nil? && _1.name.to_s == name }
+        end
+      end
+
+      # The statements, with the calls a visibility call wraps beside it:
+      # `private attr_reader :token` declares a reader all the same.
+      def unwrapped(statements)
+        statements.flat_map do |node|
+          next [node] unless node.is_a?(Prism::CallNode) && node.receiver.nil? && VISIBILITY.include?(node.name.to_s)
+
+          [node, *(node.arguments&.arguments || []).grep(Prism::CallNode)]
         end
       end
 

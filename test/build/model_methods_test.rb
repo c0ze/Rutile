@@ -68,6 +68,52 @@ class ModelMethodsTest < Minitest::Test
     assert_empty app.diagnostics.problems
   end
 
+  # Ruby's public_send raises NoMethodError for a private method, even on
+  # self, where a direct call or send reaches it.
+  def test_public_send_of_a_private_method_is_refused
+    app = edited("app/models/project.rb" => lambda do |ruby|
+      ruby.sub("def archived? = archived_at.present?", "def archived? = public_send(:archive_time).present?")
+          .sub("  private\n", "  private\n\n  def archive_time = archived_at\n")
+    end, "app/controllers/projects_controller.rb" => lambda do |ruby|
+      ruby.sub("current_user.projects.active", "public_send(:current_user).projects.active")
+          .sub("@project.update!(project_params)", "@project.update!(public_send(:project_params))")
+          .sub("current_user.owned_projects", "send(:current_user).owned_projects")
+    end)
+    controller("ProjectsController", app)
+    assert_equal [
+      "app/controllers/projects_controller.rb:7: public_send of the private method current_user isn't supported yet",
+      "app/controllers/projects_controller.rb:21: public_send of the private method project_params isn't supported yet",
+      "app/models/project.rb:13: public_send of the private method archive_time isn't supported yet"
+    ], app.diagnostics.problems
+  end
+
+  # Readers follow `private` and `public :name` as defs do, `private
+  # attr_reader` is a reader, not a def, and `public :name` can make an
+  # inherited method public.
+  def test_visibility_of_readers
+    app = edited("app/controllers/projects_controller.rb" => lambda do |ruby|
+      ruby.sub("  private\n", "  private\n\n  attr_reader :token\n  public :token\n  private attr_reader :unused\n" \
+                              "  attr_reader :other\n  public %i[other]\n  public :current_user\n")
+          .sub("current_user.projects.active", "public_send(:current_user).projects.active")
+    end)
+    methods = app.model_methods
+    path = "app/controllers/projects_controller.rb"
+    names = %w[token unused other project_params current_user]
+    assert_equal({ "token" => :public, "unused" => :private, "other" => :public, "project_params" => :private,
+                   "current_user" => :public }, names.to_h { [_1, methods.visibility(path, _1)] })
+    # ApplicationController's private reader, made public here.
+    controller("ProjectsController", app)
+    assert_empty app.diagnostics.problems
+  end
+
+  # A call wrapped in `private` is still a class-body call: a model's
+  # reader would shadow the column Rutile reads instead.
+  def test_a_wrapped_reader_in_a_model_is_refused
+    app = edited("app/models/project.rb" => ->(ruby) { ruby.sub("  private\n", "  private attr_reader :name\n\n  private\n") })
+    model("Project", app)
+    assert_equal ["app/models/project.rb:19: attr_reader in a class body isn't supported yet"], app.diagnostics.problems
+  end
+
   def test_a_private_method_from_outside_is_refused
     app = edited("app/models/project.rb" => ->(ruby) { ruby.sub("  private\n", "  private\n\n  def secret = name\n") },
                  "app/controllers/projects_controller.rb" => ->(ruby) { ruby.sub("@project.archive!", "@project.secret") })
