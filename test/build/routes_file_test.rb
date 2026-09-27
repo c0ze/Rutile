@@ -26,6 +26,24 @@ class RoutesFileTest < Minitest::Test
     RUST
   end
 
+  # A public method of ApplicationController is an action of every
+  # controller, but a controller compiles only its own file's actions.
+  def test_an_action_from_outside_the_controllers_file_is_refused
+    manifest = JSON.parse(IntrospectHelper.manifest_text)
+    manifest["controllers"].each { _1["actions"] = (_1["actions"] + ["ping"]).sort }
+    ping = manifest["routes"][2].merge("path" => "/ping(.:format)", "action" => "ping", "name" => nil)
+    manifest["routes"] += [ping.merge("controller" => "posts"), ping.merge("controller" => "application")]
+    edit = ->(ruby) { ruby.sub("  private\n", "  def ping = head(:ok)\n\n  private\n") }
+    scratch = scratch_app({ "app/controllers/application_controller.rb" => edit }, manifest:,
+                                                                                  diagnostics: Rutile::Build::Diagnostics.new)
+    Rutile::Build::RoutesFile.new(scratch).to_rust
+    assert_equal [
+      "config/routes.rb: GET /ping(.:format) application#ping: ApplicationController as a route's controller isn't supported yet",
+      "config/routes.rb: GET /ping(.:format) posts#ping: an action PostsController inherits from ApplicationController isn't supported yet"
+    ], scratch.diagnostics.problems
+    assert_equal %w[CommentsController PostsController UsersController], Rutile::Build::ControllerFile.all(scratch).map(&:name)
+  end
+
   def test_route_requirements_are_unsupported
     broken = app_with { |m| m["routes"][2]["requirements"] = { "id" => { "regexp" => "\\d+", "options" => 0 } } }
     error = assert_raises(Rutile::Build::Unsupported) { Rutile::Build::RoutesFile.new(broken).to_rust }

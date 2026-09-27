@@ -49,10 +49,25 @@ module Rutile
         name = "#{Names.camel(route["controller"])}Controller"
         controller = @app.controllers.find { _1["name"] == name } or unsupported!("#{where}: #{name}, which the app doesn't define")
         unsupported!("#{where}: an action #{name} doesn't have") unless controller["actions"].include?(route["action"])
+        own!(controller, route["action"], where)
 
         @uses.rt("action")
         @controllers << name
         "action(#{Names.str(route["action"])}, #{name}::#{route["action"]})"
+      end
+
+      # A controller compiles the actions its own file defines. One it
+      # inherits, a public method of ApplicationController for one, has
+      # nothing in its Rust to route to, and ApplicationController's own
+      # file compiles no actions.
+      def own!(controller, action, where)
+        name = controller["name"]
+        unsupported!("#{where}: ApplicationController as a route's controller") if name == "ApplicationController"
+        path = controller.dig("source", "path")
+        return if @app.source.defs(path).any? { _1.name.to_s == action }
+
+        from = @app.source.defs(ControllerFile::APPLICATION).any? { _1.name.to_s == action } ? "ApplicationController" : "outside #{path}"
+        unsupported!("#{where}: an action #{name} inherits from #{from}")
       end
 
       # `constraints: ->(request) { ... }` as `fn(&Request) -> bool`.

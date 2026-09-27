@@ -10,8 +10,11 @@ module Rutile
       # What a helper may return: the types with a Rust spelling.
       RETURNABLE = %i[record relation nilable str int float bool time date value json attributes].freeze
 
-      # Every app controller that has actions.
-      def self.all(app) = app.controllers.reject { _1["actions"].empty? }.map { new(app, _1["name"]) }
+      # Every app controller that has actions. ApplicationController's file
+      # is ApplicationControllerFile's, whatever public methods it has.
+      def self.all(app)
+        app.controllers.reject { _1["actions"].empty? || _1["name"] == "ApplicationController" }.map { new(app, _1["name"]) }
+      end
 
       attr_reader :name
 
