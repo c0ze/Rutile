@@ -22,6 +22,9 @@ module Rutile
         refuse = ->(what) { raise Unsupported, "#{path}: #{what} in a regexp isn't supported yet" }
         refuse.("the options #{options}") unless (options & ~7).zero?
         flags = FLAGS.select { |bit, _| options.anybits?(bit) }.values
+        # Case-insensitivity and extended mode, per open group: `(?i)` sets
+        # a flag to the end of its group, `(?i:...)` inside its own.
+        modes = [{ "i" => flags.include?("i"), "x" => flags.include?("x") }]
         out = +""
         depth = 0
         quantified = false
@@ -29,7 +32,7 @@ module Rutile
         while i < source.size
           c = source[i]
           if c == "\\"
-            i = escape(source, i, depth, out, refuse)
+            i = escape(source, i, depth, out, refuse, modes.last["i"])
             quantified = false
             next
           end
@@ -43,17 +46,29 @@ module Rutile
             refuse.("a POSIX bracket") if c == "[" && source[i + 1] == ":"
             depth += 1 if c == "["
             depth -= 1 if c == "]"
+          elsif c == "#" && modes.last["x"]
+            # A comment to the end of the line, which Rust's (?x) reads the
+            # same; nothing in it is syntax.
+            stop = source.index("\n", i) || source.size
+            out << source[i...stop]
+            i = stop
+            next
           else
             case c
             when "[" then depth += 1
             when "^", "$" then flags << "m" unless flags.include?("m")
+            when ")" then modes.pop if modes.size > 1
             when "("
               group = source[i + 1..][/\A\?([imx-]+)([:)])/]
               if group
+                on, off = group[1..-2].split("-", 2)
+                mode = modes.last.to_h { |flag, set| [flag, off.to_s.include?(flag) ? false : on.include?(flag) || set] }
+                group.end_with?(":") ? modes.push(mode) : modes[-1] = mode
                 out << group.tr("m", "s").prepend("(")
                 i += group.size + 1
                 next
               end
+              modes.push(modes.last)
               rest = source[i + 1..]
               refuse.("look-around") if rest.match?(/\A\?<?[=!]/)
               refuse.("an atomic group") if rest.start_with?("?>")
@@ -72,6 +87,14 @@ module Rutile
               next
             end
           end
+          if c == "[" && (lead = source[i + 1..][/\A\^?\]/])
+            # A ] first in a class is literal in both engines; escaped, no
+            # reader takes it for the end.
+            out << c << lead.sub("]", "\\]")
+            i += 1 + lead.size
+            quantified = false
+            next
+          end
           out << c
           quantified = false
           i += 1
@@ -80,11 +103,17 @@ module Rutile
       end
 
       # Copies or rewrites the escape at `i`; returns where to go on.
-      def escape(source, i, depth, out, refuse)
+      def escape(source, i, depth, out, refuse, folding)
         e = source[i + 1] or refuse.("a trailing backslash")
         table = depth.zero? ? OUTSIDE : INSIDE
         if e == "0" && source[i + 2]&.match?(/[0-7]/)
           refuse.("an octal escape")
+        elsif folding && %w[w W].include?(e)
+          # Rust folds the Kelvin sign and the long s into [a-zA-Z] under
+          # (?i); Ruby's \w and \W don't. A class can't turn folding off
+          # for part of itself.
+          refuse.("\\#{e} in a bracket under /i") unless depth.zero?
+          out << "(?-i:#{table[e]})"
         elsif table.key?(e)
           out << table[e]
         elsif %w[p P].include?(e) && source[i + 2] == "{" && source[i + 3] == "^"

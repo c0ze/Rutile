@@ -11,6 +11,32 @@ class RegexpTest < Minitest::Test
     assert_equal '[0-9a-zA-Z0-9_.-]', rust('[\d\w.-]')
   end
 
+  # Under /i Rust folds the Kelvin sign into k and the long s into s, so
+  # [a-z] matches them in both engines; Ruby's \w and \W stay ASCII. Each
+  # was checked against Ruby 3.4 and the regex crate.
+  def test_shorthand_word_classes_do_not_fold_under_i
+    assert_equal '(?i)(?-i:[a-zA-Z0-9_])+k(?-i:[^a-zA-Z0-9_])', rust('\w+k\W', 1)
+    assert_equal '(?i:(?-i:[a-zA-Z0-9_]))', rust('(?i:\w)')
+    error = assert_raises(Rutile::Build::Unsupported) { rust('[\w.]', 1) }
+    assert_equal "user.rb: \\w in a bracket under /i in a regexp isn't supported yet", error.message
+    assert_equal '[a-zA-Z0-9_.]', rust('[\w.]')
+    # Only where folding is on: a group's flags end with the group.
+    assert_equal '(?i:abc)[a-zA-Z0-9_]', rust('(?i:abc)[\w]')
+    assert_equal '(?i)(?-i:[a-zA-Z0-9_])', rust('(?-i:[\w])', 1)
+    assert_equal '(a(?i)b)[a-zA-Z0-9_]', rust('(a(?i)b)[\w]')
+    assert_raises(Rutile::Build::Unsupported) { rust('(?i)a[\w]') }
+    assert_raises(Rutile::Build::Unsupported) { rust('(?i:(a)[\w])') }
+    # Under /x, a comment is copied as it is: Rust's (?x) reads it the same.
+    assert_equal "(?x)a # (?i) \\k\n[a-zA-Z0-9_]", rust("a # (?i) \\k\n[\\w]", 2)
+    assert_equal "(?x:a # (\n)[a-zA-Z0-9_]", rust("(?x:a # (\n)[\\w]")
+  end
+
+  # A ] first in a class is literal in both engines, not its end.
+  def test_a_leading_bracket_is_literal
+    assert_equal '[\]a][^\]b]', rust('[]a][^]b]')
+    assert_raises(Rutile::Build::Unsupported) { rust('\A[]\w]+\z', 1) }
+  end
+
   # Ruby's \b sees "é" as a word character, though its \w doesn't: /caf\b/
   # doesn't match inside "café".
   def test_word_boundaries_are_unicode_as_in_ruby
