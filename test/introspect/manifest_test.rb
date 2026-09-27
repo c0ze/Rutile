@@ -8,7 +8,7 @@ class ManifestTest < Minitest::Test
   EXE = File.expand_path("../../exe/rutile", __dir__)
 
   def test_header
-    assert_equal 3, manifest["manifest_version"]
+    assert_equal 4, manifest["manifest_version"]
     assert_equal "8.1.4", manifest["rails_version"]
     assert_equal RUBY_VERSION, manifest["ruby_version"]
   end

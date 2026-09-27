@@ -21,6 +21,7 @@ From an audit of both repositories, reviewed by independent reviewers:
 - `public_send` of a private method is refused; Ruby raises `NoMethodError` where the direct call it compiled to reached the method. A call wrapped in `private` (`private attr_reader :title`) is checked like the same call on its own line.
 - The generated server builds every model's validations at boot, so a regexp Rust can't parse stops it there, naming the file, instead of on a request.
 - Verify empties the tables no fixture file fills before each test, which the transaction it turns off used to roll back.
+- From the review of the merge with 0.9: a Symbol as `params.fetch`'s default and `==` between collections of records are refused (a Value holds a Symbol as a String; a Vec compares record handles, not ids), and the manifest format is version 4, since this version reads fields 0.9's manifests don't have; another version is refused with a message to introspect again.
 - Generated `main.rs` reads the server's limits from the environment (`MAX_CONNECTIONS`, `IDLE_TIMEOUT`, `HEADER_TIMEOUT`, `BODY_TIMEOUT`, `WRITE_TIMEOUT`, `MIN_RATE`, `MAX_BODY_BYTES`).
 
 ## 0.9.0

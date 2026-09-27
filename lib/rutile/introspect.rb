@@ -1,6 +1,7 @@
 require "fileutils"
 require "open3"
 require_relative "unbundled"
+require_relative "introspect/manifest_version"
 
 module Rutile
   # Host side of `rutile introspect`: runs introspect/runner.rb inside the

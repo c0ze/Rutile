@@ -193,6 +193,15 @@ class SignaturesTest < Minitest::Test
     assert_includes app.diagnostics.problems.join("\n"), "passing a param value to named?'s label (str), which Ruby would pass as it is"
   end
 
+  # Ruby compares records in an Array by id; the Vec's handles would compare
+  # which slot each was loaded into.
+  def test_comparing_collections_of_records_is_refused
+    app = product_with("  #: (Array[Product], Array[Product]) -> bool\n  def same_products?(left, right) = left == right\n")
+    model("Product", app)
+    assert_includes app.diagnostics.problems,
+                    "app/models/product.rb:#{model_line(app, "def same_products?")}: == between collections of records isn't supported yet"
+  end
+
   def test_public_send_never_reaches_a_private_method
     app = product_with("  #: () -> bool\n  def peek? = public_send(:hidden?, 1)\n\n  private\n\n  #: (Integer) -> bool\n  def hidden?(n) = n > 0\n")
     model("Product", app)

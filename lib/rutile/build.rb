@@ -1,6 +1,8 @@
 require "json"
 require "prism"
 require "set"
+require_relative "version"
+require_relative "introspect/manifest_version"
 
 module Rutile
   # `rutile build`: the manifest plus the app's Ruby, written out as a Cargo
@@ -25,7 +27,13 @@ module Rutile
     end
 
     def self.read_manifest(path)
-      JSON.parse(File.read(path))
+      manifest = JSON.parse(File.read(path))
+      version = manifest["manifest_version"] if manifest.is_a?(Hash)
+      unless version == Introspect::MANIFEST_VERSION
+        raise Error, "#{path}: manifest_version #{version.inspect}, where rutile #{VERSION} reads " \
+                     "#{Introspect::MANIFEST_VERSION}; introspect again"
+      end
+      manifest
     rescue SystemCallError, JSON::ParserError => e
       raise Error, "#{path} isn't a manifest: #{e.message}"
     end

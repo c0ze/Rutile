@@ -57,7 +57,10 @@ class NumbersTest < Minitest::Test
   end
 
   def test_fetch_needs_a_literal_default
-    %w[params.fetch(:id) params.fetch(:id,\ Time.current)].zip(["fetch without a default", "a fetch default that isn't a literal"])
+    # A missing param gives the Symbol, which no String equals; a Value
+    # would hold it as the String.
+    %w[params.fetch(:id) params.fetch(:id,\ Time.current) params.fetch(:id,\ :first)]
+      .zip(["fetch without a default", "a fetch default that isn't a literal", "a Symbol as fetch's default"])
                                                          .each do |call, message|
       app = scratch_app({ "app/controllers/posts_controller.rb" => ->(ruby) { ruby.sub("params[:id]", "#{call}.to_i") } })
       refused(message) { Rutile::Build::ControllerFile.new(app, "PostsController").to_rust }

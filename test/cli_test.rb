@@ -55,6 +55,17 @@ class CliTest < Minitest::Test
     assert_match(/\Arutile build: #{Regexp.escape(path)}.missing isn't a manifest: .+\n\z/, err)
   end
 
+  # A manifest from another version would be read as if its fields meant
+  # what this one's do, or crash on one it doesn't have.
+  def test_a_manifest_of_another_version_is_refused
+    manifest = JSON.parse(IntrospectHelper.manifest_text).merge("manifest_version" => 3)
+    path = File.join(Dir.mktmpdir, "manifest.json")
+    File.write(path, JSON.generate(manifest))
+    _out, err, status = Open3.capture3("ruby", EXE, "check", IntrospectHelper::APP, "--manifest", path)
+    assert_equal 1, status.exitstatus
+    assert_equal "rutile check: #{path}: manifest_version 3, where rutile #{Rutile::VERSION} reads 4; introspect again\n", err
+  end
+
   def test_check_prints_the_report_and_fails_on_problems
     manifest = JSON.parse(IntrospectHelper.manifest_text)
     manifest["gems"] << { "name" => "devise", "groups" => %w[default] }

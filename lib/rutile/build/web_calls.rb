@@ -196,7 +196,9 @@ module Rutile
       # What `fetch` gives back when the key is absent: a literal.
       def fetch_default(node, at)
         case node
-        when Prism::IntegerNode, Prism::TrueNode, Prism::FalseNode, Prism::StringNode, Prism::SymbolNode then expr(node).rust
+        when Prism::IntegerNode, Prism::TrueNode, Prism::FalseNode, Prism::StringNode then expr(node).rust
+        # A Value would hold it as a String, which Ruby's Symbol never equals.
+        when Prism::SymbolNode then unsupported!(at, "a Symbol as fetch's default")
         when Prism::NilNode
           @uses.rt("Value")
           "Value::Nil"

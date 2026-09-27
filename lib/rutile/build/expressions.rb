@@ -73,6 +73,9 @@ module Rutile
                  dynamic_compare(node, name, left, right)
                elsif [left, right].any? { _1.type == T::NIL }
                  nil_compare(left, right, name, node)
+               elsif %w[== !=].include?(name) && [left, right].any? { holds_records?(_1.type) }
+                 # Ruby compares the records by id; handles would compare slots.
+                 unsupported!(node, "#{name} between collections of records")
                elsif %w[== !=].include?(name) && record?(left) && record?(right)
                  ctx = :read if ctx == :none
                  same_record(left, right, name, node)
@@ -93,6 +96,17 @@ module Rutile
       end
 
       def record?(code) = (code.type.nilable? ? code.type.inner : code.type).kind == :record
+
+      # A relation, loaded records, or a list with records anywhere in it.
+      def holds_records?(type)
+        type = type.inner while type.nilable?
+        return true if %i[relation records].include?(type.kind)
+        return false unless type.kind == :list
+
+        element = type.inner
+        element = element.inner while element.nilable?
+        element.kind == :record || holds_records?(element)
+      end
 
       # Active Record's `==` compares ids: the same row loaded twice is two
       # handles, so `@task.assignee == current_user` can't compare them.

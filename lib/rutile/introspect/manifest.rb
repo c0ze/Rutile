@@ -5,13 +5,14 @@ require_relative "models"
 require_relative "routes"
 require_relative "controllers"
 require_relative "gems"
+require_relative "manifest_version"
 
 module Rutile
   module Introspect
     # Assembles the manifest. Every section comes out in a fixed order so two
     # runs over the same app produce byte-identical JSON.
     module Manifest
-      VERSION = 3
+      VERSION = MANIFEST_VERSION
 
       module_function
 
