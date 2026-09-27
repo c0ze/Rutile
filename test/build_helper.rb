@@ -6,6 +6,9 @@ require_relative "../lib/rutile/build"
 module BuildHelper
   include IntrospectHelper
 
+  # RustOnRails beside this repository, or wherever RUSTONRAILS_DIR says.
+  RUNTIME = File.expand_path(ENV.fetch("RUSTONRAILS_DIR", File.expand_path("../../RustOnRails", __dir__)))
+
   def self.app
     @app ||= Rutile::Build::App.new(IntrospectHelper::APP, IntrospectHelper.manifest)
   end

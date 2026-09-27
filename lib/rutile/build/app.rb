@@ -25,7 +25,12 @@ module Rutile
       def model?(name) = models.any? { _1["name"] == name }
       def model_path(name) = model(name).dig("source", "path")
 
-      def table(name) = manifest.fetch("tables").find { _1["name"] == model(name)["table_name"] }
+      # The model's table. A view isn't among the manifest's tables.
+      def table(name)
+        table_name = model(name)["table_name"]
+        manifest.fetch("tables").find { _1["name"] == table_name } ||
+          raise(Unsupported, "#{model_path(name)}: #{name} on #{table_name}, which isn't a table (a view, say), isn't supported yet")
+      end
 
       def columns(name) = table(name).fetch("columns")
 

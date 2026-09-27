@@ -4,10 +4,11 @@ require "pathname"
 
 module Rutile
   module Build
-    # Writes the crate: Cargo.toml only when it's missing, all of src/ from
-    # scratch, then rustfmt, then `cargo check` as the gate. Everything is
-    # generated before anything is written, so an unsupported construct
-    # leaves the previous crate as it was.
+    # Writes the crate: Cargo.toml when it's missing (otherwise only its
+    # path to the runtime), all of src/ from scratch, then rustfmt, then
+    # `cargo check` as the gate. Everything is generated before anything is
+    # written, so an unsupported construct leaves the previous crate as it
+    # was.
     class Crate
       def initialize(app, out, name:, runtime:)
         @app = app
@@ -38,7 +39,7 @@ module Rutile
         FileUtils.mkdir_p(@out)
         replaceable!
         cargo = File.join(@out, "Cargo.toml")
-        File.write(cargo, cargo_toml) unless File.exist?(cargo)
+        File.write(cargo, File.exist?(cargo) ? runtime_moved(File.read(cargo)) : cargo_toml)
         FileUtils.rm_rf(File.join(@out, "src"))
         paths = generated.map do |path, text|
           full = File.join(@out, path)
@@ -68,10 +69,21 @@ module Rutile
         return if status.success? && !output.match?(/^warning/)
 
         raise Error, "#{command.first} #{command[1]} failed on the generated crate in #{@out}:\n#{output}"
+      rescue Errno::ENOENT
+        raise Error, "#{command.first} isn't on PATH; rutile build needs a Rust toolchain"
       end
 
+      # Cargo.toml is the user's after the first build, but its path to the
+      # runtime follows --runtime. A dependency the user changed to
+      # something else stays.
+      def runtime_moved(toml)
+        toml.sub(/^rustonrails = \{ path = "[^"]*" \}$/) { %(rustonrails = { path = "#{runtime_path}" }) }
+      end
+
+      def runtime_path = Pathname(@runtime).relative_path_from(Pathname(File.expand_path(@out)))
+
       def cargo_toml
-        runtime = Pathname(@runtime).relative_path_from(Pathname(File.expand_path(@out)))
+        runtime = runtime_path
         toml = <<~TOML
           [package]
           name = "#{@name}"

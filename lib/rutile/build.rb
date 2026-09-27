@@ -16,7 +16,13 @@ module Rutile
     # Introspects the app (unless handed a manifest) and writes the crate.
     def self.run(app_dir:, out:, runtime:, name: File.basename(app_dir), manifest: nil, env: "development", vars: {})
       manifest ||= Introspect.run(app_dir:, env:, out: File.join(app_dir, "tmp/rutile/manifest.json"), vars:)
-      Crate.new(App.new(app_dir, JSON.parse(File.read(manifest))), out, name:, runtime:).write
+      Crate.new(App.new(app_dir, read_manifest(manifest)), out, name:, runtime:).write
+    end
+
+    def self.read_manifest(path)
+      JSON.parse(File.read(path))
+    rescue SystemCallError, JSON::ParserError => e
+      raise Error, "#{path} isn't a manifest: #{e.message}"
     end
   end
 end

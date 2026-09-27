@@ -4,7 +4,6 @@ require_relative "../build_helper"
 class DiagnosticsTest < Minitest::Test
   include BuildHelper
 
-  RUNTIME = File.expand_path("../../../RustOnRails", __dir__)
   COLLECT = -> { Rutile::Build::Diagnostics.new }
 
   def files(app) = Rutile::Build::Crate.new(app, "/unused", name: "blog", runtime: RUNTIME).files

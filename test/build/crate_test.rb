@@ -4,7 +4,6 @@ require_relative "../build_helper"
 class CrateTest < Minitest::Test
   include BuildHelper
 
-  RUNTIME = File.expand_path("../../../RustOnRails", __dir__)
   # Share RustOnRails' compiled dependencies instead of building them again.
   ENV["CARGO_TARGET_DIR"] ||= File.join(RUNTIME, "target")
 
@@ -58,6 +57,33 @@ class CrateTest < Minitest::Test
       refute File.exist?(stale)
       assert File.exist?(kept)
       assert_includes File.read(cargo), "# mine"
+    end
+  end
+
+  # A different --runtime moves the dependency; the rest of Cargo.toml is
+  # the user's.
+  def test_a_rebuild_follows_a_new_runtime
+    Dir.mktmpdir do |out|
+      build(out)
+      cargo = File.join(out, "Cargo.toml")
+      File.write(cargo, "#{File.read(cargo)}\n# mine\n")
+      elsewhere = File.join(Dir.mktmpdir, "runtime")
+      File.symlink(RUNTIME, elsewhere)
+      build(out, runtime: elsewhere)
+      assert_includes File.read(cargo), %(rustonrails = { path = "#{Pathname(elsewhere).relative_path_from(Pathname(out))}" })
+      assert_includes File.read(cargo), "# mine"
+    end
+  end
+
+  def test_a_missing_tool_is_an_error
+    Dir.mktmpdir do |out|
+      app # introspection runs bin/rails, which needs PATH
+      path = ENV.fetch("PATH")
+      ENV["PATH"] = Dir.mktmpdir
+      error = assert_raises(Rutile::Build::Error) { build(out) }
+      assert_equal "rustfmt isn't on PATH; rutile build needs a Rust toolchain", error.message
+    ensure
+      ENV["PATH"] = path
     end
   end
 

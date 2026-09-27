@@ -28,6 +28,17 @@ class CheckTest < Minitest::Test
     end
   end
 
+  # A model on a database view has no table in the manifest.
+  def test_a_model_on_a_view_is_a_problem_not_a_crash
+    manifest = JSON.parse(IntrospectHelper.manifest_text)
+    manifest["models"].find { _1["name"] == "Comment" }["table_name"] = "recent_comments"
+    path = File.join(Dir.mktmpdir, "manifest.json")
+    File.write(path, JSON.generate(manifest))
+    diagnostics = Rutile::Check.run(app_dir: IntrospectHelper::APP, manifest: path)
+    assert_includes diagnostics.problems,
+                    "app/models/comment.rb: Comment on recent_comments, which isn't a table (a view, say), isn't supported yet"
+  end
+
   def test_the_example_checks_clean
     path = File.join(Dir.mktmpdir, "manifest.json")
     File.write(path, IntrospectHelper.manifest_text)

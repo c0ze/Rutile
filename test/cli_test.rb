@@ -43,6 +43,18 @@ class CliTest < Minitest::Test
     assert_equal "rutile build: app/models/post.rb: has_many :comments through tags in this shape isn't supported yet\n", err
   end
 
+  def test_a_manifest_that_is_not_json_fails_cleanly
+    path = File.join(Dir.mktmpdir, "manifest.json")
+    File.write(path, "{")
+    _out, err, status = Open3.capture3("ruby", EXE, "check", IntrospectHelper::APP, "--manifest", path)
+    assert_equal 1, status.exitstatus
+    assert_match(/\Arutile check: #{Regexp.escape(path)} isn't a manifest: .+\n\z/, err)
+    _out, err, status = Open3.capture3("ruby", EXE, "build", IntrospectHelper::APP, "--out", Dir.mktmpdir,
+                                       "--runtime", "/unused", "--manifest", "#{path}.missing")
+    assert_equal 1, status.exitstatus
+    assert_match(/\Arutile build: #{Regexp.escape(path)}.missing isn't a manifest: .+\n\z/, err)
+  end
+
   def test_check_prints_the_report_and_fails_on_problems
     manifest = JSON.parse(IntrospectHelper.manifest_text)
     manifest["gems"] << { "name" => "devise", "groups" => %w[default] }
