@@ -94,6 +94,51 @@ end
 ")
   end
 
+  # Rails reopened by path is the same patch as by a call: once per opening,
+  # at the outermost Rails namespace.
+  def test_reopening_rails_by_path
+    ruby = <<~RUBY
+      class ActiveRecord::Base
+        def destroy = false
+      end
+      module ActiveRecord
+        class Base; end
+        module Persistence; end
+      end
+      module Tools
+        module ::ActionController; end
+        class ActiveModel::EachValidator; end
+      end
+      class ::ActiveSupport::TimeWithZone; end
+    RUBY
+    assert_equal [
+      "lib/rails_ext.rb:1: reopening ActiveRecord::Base can't be compiled; use a helper module",
+      "lib/rails_ext.rb:4: reopening ActiveRecord can't be compiled; use a helper module",
+      "lib/rails_ext.rb:9: reopening ActionController can't be compiled; use a helper module",
+      "lib/rails_ext.rb:10: reopening ActiveModel::EachValidator can't be compiled; use a helper module",
+      "lib/rails_ext.rb:12: reopening ActiveSupport::TimeWithZone can't be compiled; use a helper module"
+    ], findings("lib/rails_ext.rb" => ruby)
+  end
+
+  # A subclass of a Rails class, or a module of the app's that shares a
+  # Rails name, is the app's own.
+  def test_the_apps_own_classes_beside_rails
+    ruby = <<~RUBY
+      class EmailValidator < ActiveModel::EachValidator; end
+      module Tools
+        module ActiveRecord; end
+        class ActiveRecord::Helper; end
+      end
+    RUBY
+    # A path resolves lexically, through the app's namespace wherever it's
+    # defined, as Ruby resolves it.
+    elsewhere = "module Admin\n  class ActiveSupport::Report; end\nend\n"
+    assert_empty findings("lib/email_validator.rb" => ruby, "lib/admin.rb" => "module Admin\n  module ActiveSupport; end\nend\n",
+                          "lib/admin/report.rb" => elsewhere)
+    assert_equal ["lib/admin/report.rb:2: reopening ActiveSupport::Report can't be compiled; use a helper module"],
+                 findings("lib/admin/report.rb" => elsewhere)
+  end
+
   # ApplicationRecord is abstract and not among the manifest's models, but a
   # patch to it reaches every model.
   def test_application_record_has_a_home_too

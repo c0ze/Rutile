@@ -22,20 +22,73 @@ module Rutile
       # where a monkey patch usually lives. `homes` maps the app's models
       # and controllers to their own files, the only place they may open.
       def self.scan(root, diagnostics, homes: {})
-        Dir.glob("{app,lib,config/initializers}/**/*.rb", base: root).sort.each do |path|
+        trees = Dir.glob("{app,lib,config/initializers}/**/*.rb", base: root).sort.filter_map do |path|
           result = Prism.parse_file(File.join(root, path))
-          next diagnostics.problem("#{path}: #{result.errors.first.message}") if result.failure?
+          if result.failure?
+            diagnostics.problem("#{path}: #{result.errors.first.message}")
+            next
+          end
+          [path, result.value]
+        end
+        known = Set.new
+        trees.each { |_, tree| Namespaces.new(known).visit(tree) }
+        trees.each { |path, tree| new(path, diagnostics, homes, known).visit(tree) }
+      end
 
-          new(path, diagnostics, homes).visit(result.value)
+      # Resolves a class or module body's name as Ruby does: a relative path
+      # starts at the innermost enclosing namespace that defines its first
+      # constant, else at the top level. `@nesting` holds the full names of
+      # the bodies around, innermost last; `@known`, every namespace the
+      # app's files open.
+      module Nesting
+        def full_name(node)
+          case node
+          when Prism::ConstantReadNode then [*@nesting.last, node.name.to_s].join("::")
+          when Prism::ConstantPathNode
+            path = node.full_name
+            return path.delete_prefix("::") if path.start_with?("::")
+
+            first = path.split("::").first
+            scope = @nesting.reverse.find { @known.include?("#{_1}::#{first}") }
+            scope ? "#{scope}::#{path}" : path
+          end
+        rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError
+          nil
+        end
+
+        def opening(node)
+          @nesting.push(full_name(node.constant_path))
+          yield @nesting.last
+        ensure
+          @nesting.pop
         end
       end
 
-      def initialize(path, diagnostics, homes = {})
+      # The first pass: every namespace the app defines.
+      class Namespaces < Prism::Visitor
+        include Nesting
+
+        def initialize(known)
+          super()
+          @known = known
+          @nesting = []
+        end
+
+        def visit_class_node(node) = opening(node) { @known << _1 if _1; super }
+        def visit_module_node(node) = opening(node) { @known << _1 if _1; super }
+      end
+
+      include Nesting
+
+      def initialize(path, diagnostics, homes = {}, known = Set.new)
         super()
         @path = path
         @diagnostics = diagnostics
         @homes = homes
+        @known = known
+        @nesting = []
         @depth = 0
+        @in_rails = 0
       end
 
       def visit_call_node(node)
@@ -110,11 +163,20 @@ module Rutile
         if @homes.key?(app_class) && @homes[app_class] != @path
           report(node, "reopening #{app_class} outside #{@homes[app_class]}", "that file")
         end
-        @depth += 1
-        begin
-          yield
-        ensure
-          @depth -= 1
+        opening(node) do |full|
+          # Rails opened by path, `class ActiveRecord::Base` or `module
+          # ActiveRecord; class Base`: reported once, at the outermost.
+          rails = full && FRAMEWORK.include?(full.split("::").first)
+          report(node, "reopening #{full}", "a helper module") if rails && @in_rails.zero?
+          inside = rails ? 1 : 0
+          @depth += 1
+          @in_rails += inside
+          begin
+            yield
+          ensure
+            @depth -= 1
+            @in_rails -= inside
+          end
         end
       end
 
