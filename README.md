@@ -74,3 +74,7 @@ Rutile needs Ruby 3.4 or later and a Rust toolchain. The example tasks and tests
 bundle install
 bundle exec rake test
 ```
+
+## License
+
+MIT; see [LICENSE](LICENSE).

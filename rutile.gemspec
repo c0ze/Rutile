@@ -10,12 +10,13 @@ Gem::Specification.new do |spec|
   spec.description = "Rutile compiles a Rails app's models, controllers, routes, sessions, jobs and ERB views into a Rust " \
                      "crate that runs on RustOnRails, refusing whatever it can't compile to the same behavior."
   spec.homepage = "https://github.com/c0ze/Rutile"
+  spec.license = "MIT"
   spec.required_ruby_version = ">= 3.4"
   spec.metadata["source_code_uri"] = "https://github.com/c0ze/Rutile"
   spec.metadata["changelog_uri"] = "https://github.com/c0ze/Rutile/blob/main/CHANGELOG.md"
   spec.metadata["documentation_uri"] = "https://github.com/c0ze/Rutile/blob/main/docs/wiki/Home.md"
 
-  spec.files = Dir["lib/**/*.rb", "exe/*", "config/*.yml", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "exe/*", "config/*.yml", "README.md", "LICENSE"]
   spec.metadata["default_lint_roller_plugin"] = "RuboCop::Rutile::Plugin"
   spec.bindir = "exe"
   spec.executables = ["rutile"]
