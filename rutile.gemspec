@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 3.4"
   spec.metadata["source_code_uri"] = "https://github.com/c0ze/Rutile"
   spec.metadata["changelog_uri"] = "https://github.com/c0ze/Rutile/blob/main/CHANGELOG.md"
-  spec.metadata["documentation_uri"] = "https://github.com/c0ze/Rutile/blob/main/docs/wiki/Home.md"
+  spec.metadata["documentation_uri"] = "https://github.com/c0ze/Rutile/wiki"
 
   spec.files = Dir["lib/**/*.rb", "exe/*", "config/*.yml", "README.md", "LICENSE"]
   spec.metadata["default_lint_roller_plugin"] = "RuboCop::Rutile::Plugin"

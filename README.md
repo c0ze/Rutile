@@ -50,7 +50,7 @@ pub fn update(&mut self, req: &mut Request) -> Result<Response> {
 - **Ruby:** blocks (`each`, `map`, `select`, `reject`, `sum`), arrays, strings, Integer and Float arithmetic as Ruby does it, dates and times, `transaction` blocks, methods with parameters typed by [rbs-inline](docs/wiki/Types-and-Signatures.md) comments, and a [dynamic `Value`](docs/wiki/Value-Fallback.md) where no static type reaches. ([Ruby features](docs/wiki/Ruby-Features.md))
 - **Sessions, jobs and views:** Rails' cookie sessions, readable by both sides; Active Job on Sidekiq, with a Rust worker that shares Ruby's queues; ERB templates in layouts, byte for byte what Action View renders. ([Sessions](docs/wiki/Sessions-and-Cookies.md), [Jobs](docs/wiki/Jobs.md), [Views](docs/wiki/Views.md))
 
-What Rutile can't compile the same way, it refuses with a file, a line and a reason rather than compiling something that behaves differently ([Limitations](docs/wiki/Limitations.md)). The [wiki](docs/wiki/Home.md) covers every feature.
+What Rutile can't compile the same way, it refuses with a file, a line and a reason rather than compiling something that behaves differently ([Limitations](docs/wiki/Limitations.md)). The [wiki](https://github.com/c0ze/Rutile/wiki) covers every feature; its source is [docs/wiki](docs/wiki/Home.md), published with `bundle exec rake wiki:publish`.
 
 ## Commands
 
